@@ -61,7 +61,7 @@ The backend already had comprehensive category API endpoints:
 ## API Configuration
 
 ### Frontend API Client
-- **Base URL:** `https://rental-prime-main-backend.onrender.com` (production)
+- **Base URL:** `https://rental-prime-backend-8ilt.onrender.com` (production)
 - **Local URL:** `http://localhost:5001` (development)
 - **Authentication:** Bearer token from localStorage
 - **Error Handling:** Standardized error responses

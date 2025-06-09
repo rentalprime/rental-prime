@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Frontend API</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .result { margin: 10px 0; padding: 10px; border-radius: 5px; }
+        .success { background-color: #d4edda; color: #155724; }
+        .error { background-color: #f8d7da; color: #721c24; }
+        .info { background-color: #d1ecf1; color: #0c5460; }
+        button { padding: 10px 20px; margin: 5px; cursor: pointer; }
+        pre { background-color: #f8f9fa; padding: 10px; border-radius: 5px; overflow-x: auto; }
+    </style>
+</head>
+<body>
+    <h1>Frontend API Test</h1>
+    <p>This page tests the listing API from the frontend perspective.</p>
+    
+    <button onclick="testListingService()">Test Listing Service</button>
+    <button onclick="testDirectAPI()">Test Direct API</button>
+    <button onclick="clearResults()">Clear Results</button>
+    
+    <div id="results"></div>
+
+    <script>
+        const API_URL = 'http://localhost:5001';
+        
+        function addResult(message, type = 'info') {
+            const resultsDiv = document.getElementById('results');
+            const resultDiv = document.createElement('div');
+            resultDiv.className = `result ${type}`;
+            resultDiv.innerHTML = message;
+            resultsDiv.appendChild(resultDiv);
+        }
+        
+        function clearResults() {
+            document.getElementById('results').innerHTML = '';
+        }
+        
+        async function testDirectAPI() {
+            addResult('🔄 Testing direct API call...', 'info');
+            
+            try {
+                const response = await fetch(`${API_URL}/api/listings`);
+                addResult(`Response status: ${response.status}`, response.ok ? 'success' : 'error');
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    addResult(`✅ API Response received`, 'success');
+                    addResult(`<pre>${JSON.stringify({
+                        success: data.success,
+                        count: data.count,
+                        dataType: Array.isArray(data.data) ? 'array' : typeof data.data,
+                        dataLength: data.data ? data.data.length : 0
+                    }, null, 2)}</pre>`, 'info');
+                } else {
+                    const errorData = await response.json();
+                    addResult(`❌ API Error: ${JSON.stringify(errorData)}`, 'error');
+                }
+            } catch (error) {
+                addResult(`❌ Network Error: ${error.message}`, 'error');
+            }
+        }
+        
+        async function testListingService() {
+            addResult('🔄 Testing listing service format...', 'info');
+            
+            try {
+                // Simulate the listing service logic
+                const response = await fetch(`${API_URL}/api/listings`);
+                addResult(`Response status: ${response.status}`, response.ok ? 'success' : 'error');
+                
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    const serviceResponse = {
+                        data: [],
+                        count: 0,
+                        success: false,
+                        error: errorData.message || "Failed to fetch listings"
+                    };
+                    addResult(`❌ Service Error Response: <pre>${JSON.stringify(serviceResponse, null, 2)}</pre>`, 'error');
+                    return;
+                }
+                
+                const data = await response.json();
+                
+                // Apply the service logic
+                let serviceResponse;
+                if (data.success && data.data) {
+                    serviceResponse = {
+                        data: data.data,
+                        count: data.count || 0,
+                        success: data.success
+                    };
+                } else {
+                    serviceResponse = {
+                        data: Array.isArray(data) ? data : [],
+                        count: 0,
+                        success: false
+                    };
+                }
+                
+                addResult(`✅ Service Response Format: <pre>${JSON.stringify({
+                    hasData: !!serviceResponse.data,
+                    isDataArray: Array.isArray(serviceResponse.data),
+                    count: serviceResponse.count,
+                    success: serviceResponse.success,
+                    dataLength: serviceResponse.data ? serviceResponse.data.length : 0
+                }, null, 2)}</pre>`, 'success');
+                
+                // Test component logic
+                if (serviceResponse && serviceResponse.data && Array.isArray(serviceResponse.data)) {
+                    addResult(`✅ Component validation passed - data is array with ${serviceResponse.data.length} items`, 'success');
+                } else {
+                    addResult(`❌ Component validation failed - invalid response format`, 'error');
+                }
+                
+            } catch (error) {
+                addResult(`❌ Service Error: ${error.message}`, 'error');
+            }
+        }
+    </script>
+</body>
+</html>

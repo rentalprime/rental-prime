@@ -6,7 +6,7 @@ A full-stack admin dashboard for the Rental Prima platform with modern UI and co
 
 ### Backend Deployment (Render)
 
-The backend is currently deployed on Render at: `https://rental-prime-main-backend.onrender.com`
+The backend is currently deployed on Render at: `https://rental-prime-backend-8ilt.onrender.com`
 
 To deploy your own backend:
 1. Push your code to a GitHub repository

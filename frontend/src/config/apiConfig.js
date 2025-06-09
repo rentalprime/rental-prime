@@ -18,7 +18,7 @@ const getEnvVariable = (key, defaultValue) => {
 // Get the API URL from environment variables or use default values
 const apiUrl = getEnvVariable(
   "REACT_APP_API_URL",
-  "https://rental-prime-main-backend.onrender.com"
+  "https://rental-prime-backend-8ilt.onrender.com"
 );
 
 console.log("API URL:", apiUrl);
