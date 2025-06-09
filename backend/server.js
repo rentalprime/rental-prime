@@ -53,6 +53,7 @@ app.use(
 
       const allowedOrigins = [
         "http://localhost:3000",
+        "https://rental-prime-frontend.onrender.com",
         // Add your frontend deployment URLs here
         // Example: "https://your-frontend-domain.com",
       ];
