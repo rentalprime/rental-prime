@@ -1,5 +1,6 @@
 const { createClient } = require("@supabase/supabase-js");
 const config = require("../config/config");
+const { validateListingCreation } = require("../utils/planValidator");
 
 // Initialize Supabase client
 const supabase = createClient(config.supabaseUrl, config.supabaseKey);
@@ -252,6 +253,19 @@ exports.createListing = async (req, res) => {
         return res.status(403).json({
           success: false,
           message: "User account is not active",
+        });
+      }
+
+      // Validate plan requirements for listing creation
+      const planValidation = await validateListingCreation(
+        req.user.id,
+        is_featured
+      );
+
+      if (!planValidation.canCreate) {
+        return res.status(403).json({
+          success: false,
+          message: planValidation.reason,
         });
       }
     }

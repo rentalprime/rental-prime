@@ -252,6 +252,38 @@ exports.authorizeSuperAdmin = (req, res, next) => {
   });
 };
 
+// Authorize vendor access only
+// Note: Vendors are stored in users table with user_type 'vendor'
+exports.authorizeVendor = (req, res, next) => {
+  if (!req.user) {
+    return res.status(401).json({
+      success: false,
+      message: "User not authenticated",
+    });
+  }
+
+  const isFromUsersTable = req.userTable === "users";
+  const userType = req.user.user_type;
+
+  if (!isFromUsersTable) {
+    return res.status(403).json({
+      success: false,
+      message: "Access denied. This resource is only available to vendors.",
+    });
+  }
+
+  if (userType !== "vendor") {
+    return res.status(403).json({
+      success: false,
+      message: `Access denied. User type '${
+        userType || "unknown"
+      }' is not authorized. Only vendors can access this resource.`,
+    });
+  }
+
+  next();
+};
+
 // Check specific permissions
 exports.checkPermission = (resource, action) => {
   return (req, res, next) => {
