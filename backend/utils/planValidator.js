@@ -254,10 +254,98 @@ async function validateListingCreation(userId, isFeatured = false) {
   }
 }
 
+/**
+ * Validate if vendor can update a listing (specifically for featured status changes)
+ * @param {string} userId - The vendor's user ID
+ * @param {boolean} currentIsFeatured - Current featured status of the listing
+ * @param {boolean} newIsFeatured - New featured status being set
+ * @returns {Object} - { canUpdate: boolean, reason: string|null, planInfo: object|null }
+ */
+async function validateListingUpdate(
+  userId,
+  currentIsFeatured = false,
+  newIsFeatured = false
+) {
+  try {
+    // If not changing featured status, no validation needed
+    if (currentIsFeatured === newIsFeatured) {
+      return {
+        canUpdate: true,
+        reason: null,
+        planInfo: null,
+      };
+    }
+
+    // If changing from featured to non-featured, always allow
+    if (currentIsFeatured && !newIsFeatured) {
+      return {
+        canUpdate: true,
+        reason: null,
+        planInfo: null,
+      };
+    }
+
+    // If changing from non-featured to featured, validate featured limits
+    if (!currentIsFeatured && newIsFeatured) {
+      // Check if vendor has an active plan
+      const planCheck = await checkVendorActivePlan(userId);
+
+      if (!planCheck.hasActivePlan) {
+        return {
+          canUpdate: false,
+          reason:
+            planCheck.error ||
+            "You need an active plan to make listings featured. Please purchase a plan first.",
+          planInfo: null,
+        };
+      }
+
+      // Get plan featured limits
+      const maxFeaturedListings = getPlanFeaturedLimits(planCheck.plan);
+
+      // Count current listings
+      const currentListings = await countVendorListings(userId);
+
+      if (currentListings.error) {
+        return {
+          canUpdate: false,
+          reason: "Error checking current listings: " + currentListings.error,
+          planInfo: planCheck,
+        };
+      }
+
+      // Check featured listing limit
+      if (
+        maxFeaturedListings !== null &&
+        currentListings.featuredListings >= maxFeaturedListings
+      ) {
+        return {
+          canUpdate: false,
+          reason: `You have reached your plan's featured listing limit of ${maxFeaturedListings}. Please upgrade your plan to make more listings featured.`,
+          planInfo: planCheck,
+        };
+      }
+    }
+
+    return {
+      canUpdate: true,
+      reason: null,
+      planInfo: null,
+    };
+  } catch (error) {
+    return {
+      canUpdate: false,
+      reason: "Error validating listing update: " + error.message,
+      planInfo: null,
+    };
+  }
+}
+
 module.exports = {
   checkVendorActivePlan,
   getPlanListingLimits,
   getPlanFeaturedLimits,
   countVendorListings,
   validateListingCreation,
+  validateListingUpdate,
 };

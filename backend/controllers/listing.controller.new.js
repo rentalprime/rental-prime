@@ -1,6 +1,9 @@
 const { createClient } = require("@supabase/supabase-js");
 const config = require("../config/config");
-const { validateListingCreation } = require("../utils/planValidator");
+const {
+  validateListingCreation,
+  validateListingUpdate,
+} = require("../utils/planValidator");
 
 // Initialize Supabase client
 const supabase = createClient(config.supabaseUrl, config.supabaseKey);
@@ -336,10 +339,10 @@ exports.createListing = async (req, res) => {
  */
 exports.updateListing = async (req, res) => {
   try {
-    // Check if listing exists
+    // Check if listing exists and get current data
     const { data: existingListing, error: checkError } = await supabase
       .from("listings")
-      .select("id, owner_id, owner_type")
+      .select("id, owner_id, owner_type, is_featured")
       .eq("id", req.params.id)
       .single();
     if (checkError || !existingListing) {
@@ -365,6 +368,25 @@ exports.updateListing = async (req, res) => {
           success: false,
           message: "Not authorized to update this listing",
         });
+      }
+
+      // Validate plan requirements for featured status changes (only for vendors, not admins)
+      if (isOwner && req.body.hasOwnProperty("is_featured")) {
+        const currentIsFeatured = existingListing.is_featured || false;
+        const newIsFeatured = req.body.is_featured || false;
+
+        const updateValidation = await validateListingUpdate(
+          req.user.id,
+          currentIsFeatured,
+          newIsFeatured
+        );
+
+        if (!updateValidation.canUpdate) {
+          return res.status(403).json({
+            success: false,
+            message: updateValidation.reason,
+          });
+        }
       }
     }
 
