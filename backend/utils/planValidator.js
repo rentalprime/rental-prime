@@ -76,16 +76,11 @@ async function checkVendorActivePlan(userId) {
 /**
  * Get listing limits from plan features
  * @param {Object} plan - The plan object
- * @returns {Object} - { maxListings: number|null, maxFeaturedListings: number|null }
+ * @returns {number|null} - Available listings count (null means unlimited)
  */
 function getPlanListingLimits(plan) {
-  const defaultLimits = {
-    maxListings: null, // null means unlimited
-    maxFeaturedListings: 0,
-  };
-
   if (!plan || !plan.features) {
-    return defaultLimits;
+    return 0;
   }
 
   try {
@@ -95,62 +90,40 @@ function getPlanListingLimits(plan) {
       features = JSON.parse(features);
     }
 
-    // If features is an array of strings, look for listing limits
-    if (Array.isArray(features)) {
-      const limits = { ...defaultLimits };
-
-      features.forEach((feature) => {
-        if (typeof feature === "string") {
-          // Look for patterns like "10 listings", "unlimited listings", "5 featured listings"
-          const listingMatch = feature
-            .toLowerCase()
-            .match(/(\d+|unlimited)\s+listings?/);
-          const featuredMatch = feature
-            .toLowerCase()
-            .match(/(\d+)\s+featured\s+listings?/);
-
-          if (listingMatch) {
-            limits.maxListings =
-              listingMatch[1] === "unlimited"
-                ? null
-                : parseInt(listingMatch[1]);
-          }
-
-          if (featuredMatch) {
-            limits.maxFeaturedListings = parseInt(featuredMatch[1]);
-          }
-        }
-      });
-
-      return limits;
-    }
-
-    // If features is an object, look for specific properties
-    if (typeof features === "object") {
-      return {
-        maxListings:
-          features.maxListings !== undefined
-            ? features.maxListings
-            : features.listings !== undefined
-            ? features.listings === "unlimited"
-              ? null
-              : parseInt(features.listings)
-            : defaultLimits.maxListings,
-        maxFeaturedListings:
-          features.maxFeaturedListings !== undefined
-            ? features.maxFeaturedListings
-            : features.featured !== undefined
-            ? features.featured === "unlimited"
-              ? null
-              : parseInt(features.featured)
-            : defaultLimits.maxFeaturedListings,
-      };
-    }
-
-    return defaultLimits;
+    // Extract listing limits directly from features.listings
+    return features.listings === "unlimited"
+      ? null
+      : parseInt(features.listings) || 0;
   } catch (error) {
     console.error("Error parsing plan features:", error);
-    return defaultLimits;
+    return 0;
+  }
+}
+
+/**
+ * Get featured listing limits from plan features
+ * @param {Object} plan - The plan object
+ * @returns {number|null} - Available featured listings count (null means unlimited)
+ */
+function getPlanFeaturedLimits(plan) {
+  if (!plan || !plan.features) {
+    return 0;
+  }
+
+  try {
+    // If features is a string, parse it as JSON
+    let features = plan.features;
+    if (typeof features === "string") {
+      features = JSON.parse(features);
+    }
+
+    // Extract featured limits directly from features.featured
+    return features.featured === "unlimited"
+      ? null
+      : parseInt(features.featured) || 0;
+  } catch (error) {
+    console.error("Error parsing plan features:", error);
+    return 0;
   }
 }
 
@@ -230,7 +203,8 @@ async function validateListingCreation(userId, isFeatured = false) {
     }
 
     // Get plan listing limits
-    const limits = getPlanListingLimits(planCheck.plan);
+    const maxListings = getPlanListingLimits(planCheck.plan);
+    const maxFeaturedListings = getPlanFeaturedLimits(planCheck.plan);
 
     // Count current listings
     const currentListings = await countVendorListings(userId);
@@ -244,27 +218,26 @@ async function validateListingCreation(userId, isFeatured = false) {
     }
 
     // Check total listing limit
-    if (
-      limits.maxListings !== null &&
-      currentListings.totalListings >= limits.maxListings
-    ) {
+    if (maxListings !== null && currentListings.totalListings >= maxListings) {
       return {
         canCreate: false,
-        reason: `You have reached your plan's listing limit of ${limits.maxListings}. Please upgrade your plan to create more listings.`,
+        reason: `You have reached your plan's listing limit of ${maxListings}. Please upgrade your plan to create more listings.`,
         planInfo: planCheck,
       };
     }
 
     // Check featured listing limit if this is a featured listing
-    if (
-      isFeatured &&
-      currentListings.featuredListings >= limits.maxFeaturedListings
-    ) {
-      return {
-        canCreate: false,
-        reason: `You have reached your plan's featured listing limit of ${limits.maxFeaturedListings}. Please upgrade your plan to create more featured listings.`,
-        planInfo: planCheck,
-      };
+    if (isFeatured) {
+      if (
+        maxFeaturedListings !== null &&
+        currentListings.featuredListings >= maxFeaturedListings
+      ) {
+        return {
+          canCreate: false,
+          reason: `You have reached your plan's featured listing limit of ${maxFeaturedListings}. Please upgrade your plan to create more featured listings.`,
+          planInfo: planCheck,
+        };
+      }
     }
 
     return {
@@ -284,6 +257,7 @@ async function validateListingCreation(userId, isFeatured = false) {
 module.exports = {
   checkVendorActivePlan,
   getPlanListingLimits,
+  getPlanFeaturedLimits,
   countVendorListings,
   validateListingCreation,
 };
