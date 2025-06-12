@@ -11,6 +11,7 @@ const {
   getActivePlans,
   bulkDeletePlans,
   updatePlanStatus,
+  getSubscribers,
 } = require("../controllers/plan.controller");
 
 // Routes
@@ -20,6 +21,8 @@ router
   .post(protect, authorizeSuperAdmin, createPlan); // Super admin only
 
 router.route("/stats").get(protect, authorizeSuperAdmin, getPlanStats); // Super admin only
+
+router.route("/subscribers").get(protect, authorizeSuperAdmin, getSubscribers); // Super admin only
 
 router.route("/active").get(getActivePlans); // Public access for active plans
 

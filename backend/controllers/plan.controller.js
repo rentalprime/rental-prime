@@ -539,3 +539,112 @@ exports.getActivePlans = async (req, res) => {
     });
   }
 };
+
+// @desc    Get plans with subscriber counts
+// @route   GET /api/plans/subscribers
+// @access  Private/Super Admin
+exports.getSubscribers = async (req, res) => {
+  try {
+    const {
+      status,
+      orderBy = "subscriber_count",
+      orderDirection = "desc",
+      limit = 50,
+      offset = 0,
+    } = req.query;
+
+    // Get all plans first with optional status filter
+    let planQuery = supabase.from("plans").select("*");
+
+    if (status && status !== "all") {
+      planQuery = planQuery.eq("status", status);
+    }
+
+    const { data: allPlans, error: planError } = await planQuery;
+
+    if (planError) {
+      throw new Error(planError.message);
+    }
+
+    // Get subscriber counts for each plan
+    const plansWithSubscribers = await Promise.all(
+      allPlans.map(async (plan) => {
+        // Count active subscriptions
+        const { count: activeCount, error: activeError } = await supabase
+          .from("user_subscriptions")
+          .select("*", { count: "exact", head: true })
+          .eq("plan_id", plan.id)
+          .eq("is_active", true);
+
+        // Count total subscriptions
+        const { count: totalCount, error: totalError } = await supabase
+          .from("user_subscriptions")
+          .select("*", { count: "exact", head: true })
+          .eq("plan_id", plan.id);
+
+        if (activeError || totalError) {
+          console.log("Error counting subscriptions for plan:", plan.id);
+        }
+
+        return {
+          ...plan,
+          subscriber_count: activeCount || 0,
+          total_subscriptions: totalCount || 0,
+        };
+      })
+    );
+
+    // Sort the results
+    const validOrderFields = [
+      "subscriber_count",
+      "total_subscriptions",
+      "name",
+      "price",
+      "created_at",
+    ];
+    const sortField = validOrderFields.includes(orderBy)
+      ? orderBy
+      : "subscriber_count";
+
+    plansWithSubscribers.sort((a, b) => {
+      let aValue, bValue;
+
+      if (sortField === "name") {
+        aValue = a.name.toLowerCase();
+        bValue = b.name.toLowerCase();
+        if (orderDirection === "asc") {
+          return aValue.localeCompare(bValue);
+        } else {
+          return bValue.localeCompare(aValue);
+        }
+      } else {
+        aValue = a[sortField] || 0;
+        bValue = b[sortField] || 0;
+
+        if (orderDirection === "asc") {
+          return aValue - bValue;
+        } else {
+          return bValue - aValue;
+        }
+      }
+    });
+
+    // Apply pagination
+    const startIndex = parseInt(offset) || 0;
+    const endIndex = startIndex + (parseInt(limit) || 50);
+    const paginatedPlans = plansWithSubscribers.slice(startIndex, endIndex);
+
+    res.status(200).json({
+      success: true,
+      count: paginatedPlans.length,
+      total: plansWithSubscribers.length,
+      data: paginatedPlans,
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: "Server Error",
+      error: error.message,
+    });
+  }
+};

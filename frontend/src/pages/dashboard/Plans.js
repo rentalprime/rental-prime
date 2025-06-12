@@ -8,6 +8,7 @@ import {
   RiCheckLine,
   RiTimeLine,
 } from "react-icons/ri";
+import planService from "../../services/planService";
 
 const Plans = () => {
   const [plans, setPlans] = useState([]);
@@ -20,112 +21,65 @@ const Plans = () => {
     description: "",
     price: "",
     interval: "monthly",
-    features: "",
+    features: {
+      users: "",
+      support: "email",
+      featured: "",
+      listings: "",
+      analytics: false,
+    },
     status: "active",
   });
 
   // Fetch plans on component mount
   useEffect(() => {
-    // Mock data for demonstration
-    const mockPlans = [
-      {
-        _id: "1",
-        name: "Basic",
-        description: "Perfect for individuals and small businesses",
-        price: 19.99,
-        interval: "monthly",
-        features: [
-          "Up to 5 listings",
-          "Basic analytics",
-          "Email support",
-          "1 user account",
-        ],
-        status: "active",
-        subscribers: 245,
-        createdAt: "2023-01-15T10:30:00Z",
-      },
-      {
-        _id: "2",
-        name: "Premium",
-        description: "Ideal for growing businesses",
-        price: 29.99,
-        interval: "monthly",
-        features: [
-          "Up to 20 listings",
-          "Advanced analytics",
-          "Priority email support",
-          "3 user accounts",
-          "Featured listings",
-        ],
-        status: "active",
-        subscribers: 178,
-        createdAt: "2023-01-20T14:45:00Z",
-      },
-      {
-        _id: "3",
-        name: "Basic Annual",
-        description: "Perfect for individuals and small businesses",
-        price: 199.99,
-        interval: "yearly",
-        features: [
-          "Up to 5 listings",
-          "Basic analytics",
-          "Email support",
-          "1 user account",
-        ],
-        status: "active",
-        subscribers: 112,
-        createdAt: "2023-02-05T09:15:00Z",
-      },
-      {
-        _id: "4",
-        name: "Premium Annual",
-        description: "Ideal for growing businesses",
-        price: 299.99,
-        interval: "yearly",
-        features: [
-          "Up to 20 listings",
-          "Advanced analytics",
-          "Priority email support",
-          "3 user accounts",
-          "Featured listings",
-        ],
-        status: "active",
-        subscribers: 89,
-        createdAt: "2023-02-10T16:20:00Z",
-      },
-      {
-        _id: "5",
-        name: "Enterprise",
-        description: "For large businesses with custom needs",
-        price: 99.99,
-        interval: "monthly",
-        features: [
-          "Unlimited listings",
-          "Custom analytics dashboard",
-          "24/7 phone support",
-          "Unlimited user accounts",
-          "Featured listings",
-          "API access",
-        ],
-        status: "inactive",
-        subscribers: 32,
-        createdAt: "2023-03-12T11:10:00Z",
-      },
-    ];
-
-    setTimeout(() => {
-      setPlans(mockPlans);
-      setLoading(false);
-    }, 1000);
+    fetchPlans();
   }, []);
+
+  // Fetch plans from API
+  const fetchPlans = async () => {
+    try {
+      setLoading(true);
+      const data = await planService.getPlans();
+
+      // Transform data to match expected format
+      const transformedPlans = data.map((plan) => ({
+        ...plan,
+        _id: plan.id, // Map id to _id for compatibility
+        createdAt: plan.created_at, // Map created_at to createdAt
+        // Keep features in their original format for proper editing
+        features: plan.features || {},
+        subscribers: plan.subscribers || 0,
+      }));
+
+      setPlans(transformedPlans);
+    } catch (error) {
+      console.error("Error fetching plans:", error);
+      toast.error("Failed to fetch plans. Please try again.");
+    } finally {
+      setLoading(false);
+    }
+  };
 
   // Handle form input changes
   const handleChange = (e) => {
-    setFormData({
-      ...formData,
-      [e.target.name]: e.target.value,
-    });
+    const { name, value, type, checked } = e.target;
+
+    if (name.startsWith("features.")) {
+      const featureKey = name.split(".")[1];
+      setFormData({
+        ...formData,
+        features: {
+          ...formData.features,
+          [featureKey]: type === "checkbox" ? checked : value,
+        },
+      });
+    } else {
+      setFormData({
+        ...formData,
+        [name]: type === "checkbox" ? checked : value,
+      });
+    }
   };
 
   // Open modal for adding a new plan
@@ -136,7 +90,13 @@ const Plans = () => {
       description: "",
       price: "",
       interval: "monthly",
-      features: "",
+      features: {
+        users: "",
+        support: "email",
+        featured: "",
+        listings: "",
+        analytics: false,
+      },
       status: "active",
     });
     setShowModal(true);
@@ -146,14 +106,48 @@ const Plans = () => {
   const openEditModal = (plan) => {
     setModalMode("edit");
     setCurrentPlan(plan);
-    setFormData({
-      name: plan.name,
-      description: plan.description,
-      price: plan.price.toString(),
-      interval: plan.interval,
-      features: plan.features.join("\n"),
-      status: plan.status,
-    });
+
+    // Handle both old array format and new object format for features
+    let featuresData = {
+      users: "",
+      support: "email",
+      featured: "",
+      listings: "",
+      analytics: false,
+    };
+
+    if (plan.features) {
+      if (Array.isArray(plan.features)) {
+        // Old format - convert array to object (fallback)
+        featuresData = {
+          users: "",
+          support: "email",
+          featured: "",
+          listings: "",
+          analytics: false,
+        };
+      } else if (typeof plan.features === "object" && plan.features !== null) {
+        // New format - use the object directly
+        featuresData = {
+          users: plan.features.users?.toString() || "",
+          support: plan.features.support || "email",
+          featured: plan.features.featured?.toString() || "",
+          listings: plan.features.listings?.toString() || "",
+          analytics: Boolean(plan.features.analytics),
+        };
+      }
+    }
+
+    const formDataToSet = {
+      name: plan.name || "",
+      description: plan.description || "",
+      price: plan.price?.toString() || "",
+      interval: plan.interval || "monthly",
+      features: featuresData,
+      status: plan.status || "active",
+    };
+
+    setFormData(formDataToSet);
     setShowModal(true);
   };
 
@@ -161,11 +155,13 @@ const Plans = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
 
-    // Parse features from textarea into array
-    const featuresArray = formData.features
-      .split("\n")
-      .map((feature) => feature.trim())
-      .filter((feature) => feature !== "");
+    // Validate required feature fields
+    if (!formData.features.users || !formData.features.listings) {
+      toast.error(
+        "Please fill in all required feature fields (users and listings)"
+      );
+      return;
+    }
 
     // Parse price to number
     const priceNumber = parseFloat(formData.price);
@@ -175,49 +171,66 @@ const Plans = () => {
       return;
     }
 
-    // In a real application, this would send to the API
-    // For demo purposes, we'll simulate API calls
+    // Validate and convert feature values
+    const featuresObject = {
+      users: parseInt(formData.features.users) || 0,
+      support: formData.features.support,
+      featured: parseInt(formData.features.featured) || 0,
+      listings: parseInt(formData.features.listings) || 0,
+      analytics: formData.features.analytics,
+    };
 
-    if (modalMode === "add") {
-      // Simulate adding a new plan
-      const newPlan = {
-        _id: Date.now().toString(),
-        ...formData,
+    try {
+      const planData = {
+        name: formData.name,
+        description: formData.description,
         price: priceNumber,
-        features: featuresArray,
-        subscribers: 0,
-        createdAt: new Date().toISOString(),
+        interval: formData.interval,
+        features: featuresObject,
+        status: formData.status,
       };
 
-      setPlans([newPlan, ...plans]);
-      toast.success("Plan added successfully");
-    } else {
-      // Simulate updating a plan
-      const updatedPlans = plans.map((plan) =>
-        plan._id === currentPlan._id
-          ? {
-              ...plan,
-              ...formData,
-              price: priceNumber,
-              features: featuresArray,
-            }
-          : plan
-      );
+      if (modalMode === "add") {
+        // Create new plan via API
+        await planService.createPlan(planData);
+        toast.success("Plan added successfully");
+      } else {
+        // Update existing plan via API
+        await planService.updatePlan(
+          currentPlan.id || currentPlan._id,
+          planData
+        );
+        toast.success("Plan updated successfully");
+      }
 
-      setPlans(updatedPlans);
-      toast.success("Plan updated successfully");
+      // Refresh plans list
+      await fetchPlans();
+      setShowModal(false);
+    } catch (error) {
+      console.error("Error saving plan:", error);
+      toast.error(error.message || "Failed to save plan. Please try again.");
     }
-
-    setShowModal(false);
   };
 
   // Handle plan deletion
   const handleDelete = async (planId) => {
     if (window.confirm("Are you sure you want to delete this plan?")) {
-      // Simulate deleting a plan
-      const updatedPlans = plans.filter((plan) => plan._id !== planId);
-      setPlans(updatedPlans);
-      toast.success("Plan deleted successfully");
+      try {
+        // Find the plan to get the real ID
+        const plan = plans.find((p) => p._id === planId);
+        const realId = plan?.id || planId;
+
+        await planService.deletePlan(realId);
+        toast.success("Plan deleted successfully");
+
+        // Refresh plans list
+        await fetchPlans();
+      } catch (error) {
+        console.error("Error deleting plan:", error);
+        toast.error(
+          error.message || "Failed to delete plan. Please try again."
+        );
+      }
     }
   };
 
@@ -300,12 +313,57 @@ const Plans = () => {
                   Features:
                 </h4>
                 <ul className="space-y-2">
-                  {plan.features.map((feature, index) => (
-                    <li key={index} className="flex items-start">
-                      <RiCheckLine className="w-5 h-5 text-green-500 mr-2 flex-shrink-0 mt-0.5" />
-                      <span className="text-sm text-gray-600">{feature}</span>
+                  {Array.isArray(plan.features) ? (
+                    // Old format - array of strings
+                    plan.features.map((feature, index) => (
+                      <li key={index} className="flex items-start">
+                        <RiCheckLine className="w-5 h-5 text-green-500 mr-2 flex-shrink-0 mt-0.5" />
+                        <span className="text-sm text-gray-600">{feature}</span>
+                      </li>
+                    ))
+                  ) : plan.features && typeof plan.features === "object" ? (
+                    // New format - object with structured data
+                    <>
+                      <li className="flex items-start">
+                        <RiCheckLine className="w-5 h-5 text-green-500 mr-2 flex-shrink-0 mt-0.5" />
+                        <span className="text-sm text-gray-600">
+                          Max Users: {plan.features.users}
+                        </span>
+                      </li>
+                      <li className="flex items-start">
+                        <RiCheckLine className="w-5 h-5 text-green-500 mr-2 flex-shrink-0 mt-0.5" />
+                        <span className="text-sm text-gray-600">
+                          Max Listings: {plan.features.listings}
+                        </span>
+                      </li>
+                      <li className="flex items-start">
+                        <RiCheckLine className="w-5 h-5 text-green-500 mr-2 flex-shrink-0 mt-0.5" />
+                        <span className="text-sm text-gray-600">
+                          Featured Listings: {plan.features.featured}
+                        </span>
+                      </li>
+                      <li className="flex items-start">
+                        <RiCheckLine className="w-5 h-5 text-green-500 mr-2 flex-shrink-0 mt-0.5" />
+                        <span className="text-sm text-gray-600">
+                          Support: {plan.features.support}
+                        </span>
+                      </li>
+                      <li className="flex items-start">
+                        {plan.features.analytics ? (
+                          <RiCheckLine className="w-5 h-5 text-green-500 mr-2 flex-shrink-0 mt-0.5" />
+                        ) : (
+                          <RiCloseLine className="w-5 h-5 text-red-500 mr-2 flex-shrink-0 mt-0.5" />
+                        )}
+                        <span className="text-sm text-gray-600">
+                          Analytics Access
+                        </span>
+                      </li>
+                    </>
+                  ) : (
+                    <li className="text-sm text-gray-500">
+                      No features defined
                     </li>
-                  ))}
+                  )}
                 </ul>
               </div>
 
@@ -447,21 +505,101 @@ const Plans = () => {
                     </div>
                   </div>
                   <div className="mb-4">
-                    <label
-                      htmlFor="features"
-                      className="block text-sm font-medium text-gray-700 mb-1"
-                    >
-                      Features (one per line)
+                    <label className="block text-sm font-medium text-gray-700 mb-3">
+                      Plan Features
                     </label>
-                    <textarea
-                      id="features"
-                      name="features"
-                      value={formData.features}
-                      onChange={handleChange}
-                      className="input"
-                      rows="5"
-                      required
-                    ></textarea>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label
+                          htmlFor="features.users"
+                          className="block text-sm font-medium text-gray-600 mb-1"
+                        >
+                          Max Users *
+                        </label>
+                        <input
+                          type="number"
+                          id="features.users"
+                          name="features.users"
+                          value={formData.features.users}
+                          onChange={handleChange}
+                          className="input"
+                          min="1"
+                          required
+                          placeholder="e.g., 1"
+                        />
+                      </div>
+                      <div>
+                        <label
+                          htmlFor="features.listings"
+                          className="block text-sm font-medium text-gray-600 mb-1"
+                        >
+                          Max Listings *
+                        </label>
+                        <input
+                          type="number"
+                          id="features.listings"
+                          name="features.listings"
+                          value={formData.features.listings}
+                          onChange={handleChange}
+                          className="input"
+                          min="1"
+                          required
+                          placeholder="e.g., 2"
+                        />
+                      </div>
+                      <div>
+                        <label
+                          htmlFor="features.featured"
+                          className="block text-sm font-medium text-gray-600 mb-1"
+                        >
+                          Featured Listings
+                        </label>
+                        <input
+                          type="number"
+                          id="features.featured"
+                          name="features.featured"
+                          value={formData.features.featured}
+                          onChange={handleChange}
+                          className="input"
+                          min="0"
+                          placeholder="e.g., 1"
+                        />
+                      </div>
+                      <div>
+                        <label
+                          htmlFor="features.support"
+                          className="block text-sm font-medium text-gray-600 mb-1"
+                        >
+                          Support Type
+                        </label>
+                        <select
+                          id="features.support"
+                          name="features.support"
+                          value={formData.features.support}
+                          onChange={handleChange}
+                          className="input"
+                        >
+                          <option value="email">Email</option>
+                          <option value="chat">Chat</option>
+                          <option value="phone">Phone</option>
+                          <option value="priority">Priority</option>
+                        </select>
+                      </div>
+                      <div className="col-span-2">
+                        <label className="flex items-center">
+                          <input
+                            type="checkbox"
+                            name="features.analytics"
+                            checked={formData.features.analytics}
+                            onChange={handleChange}
+                            className="mr-2 h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                          />
+                          <span className="text-sm font-medium text-gray-600">
+                            Analytics Access
+                          </span>
+                        </label>
+                      </div>
+                    </div>
                   </div>
                   <div className="mb-4">
                     <label

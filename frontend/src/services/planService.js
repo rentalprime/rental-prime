@@ -1,5 +1,5 @@
 import BaseService from "./baseService";
-import supabase from "../utils/supabaseClient";
+import apiClient from "../utils/apiClient";
 
 class PlanService extends BaseService {
   constructor() {
@@ -9,27 +9,14 @@ class PlanService extends BaseService {
   // Get plans with filters
   async getPlans(filters = {}) {
     try {
-      let query = supabase.from(this.tableName).select("*");
+      const response = await apiClient.get(this.baseUrl, filters);
 
-      // Apply filters if provided
-      if (filters.status && filters.status !== "all") {
-        query = query.eq("status", filters.status);
+      // Handle error response
+      if (response.error) {
+        throw new Error(response.error.message);
       }
 
-      if (filters.interval && filters.interval !== "all") {
-        query = query.eq("interval", filters.interval);
-      }
-
-      if (filters.search) {
-        query = query.or(
-          `name.ilike.%${filters.search}%,description.ilike.%${filters.search}%`
-        );
-      }
-
-      const { data, error } = await query.order("price", { ascending: true });
-
-      if (error) throw error;
-      return data;
+      return response.data || response;
     } catch (error) {
       console.error("Error fetching plans with filters:", error);
       throw error;
@@ -39,21 +26,67 @@ class PlanService extends BaseService {
   // Get plan statistics
   async getPlanStats() {
     try {
-      const { data, error } = await supabase
-        .from(this.tableName)
-        .select("name, subscribers")
-        .eq("status", "active");
+      const response = await apiClient.get(`${this.baseUrl}/stats`);
 
-      if (error) throw error;
+      // Handle error response
+      if (response.error) {
+        throw new Error(response.error.message);
+      }
 
-      return {
-        planSubscriptions: data.reduce((acc, plan) => {
-          acc[plan.name] = plan.subscribers;
-          return acc;
-        }, {}),
-      };
+      return response.data || response;
     } catch (error) {
       console.error("Error fetching plan statistics:", error);
+      throw error;
+    }
+  }
+
+  // Create a new plan
+  async createPlan(planData) {
+    try {
+      const response = await apiClient.post(this.baseUrl, planData);
+
+      // Handle error response
+      if (response.error) {
+        throw new Error(response.error.message);
+      }
+
+      return response.data || response;
+    } catch (error) {
+      console.error("Error creating plan:", error);
+      throw error;
+    }
+  }
+
+  // Update an existing plan
+  async updatePlan(id, planData) {
+    try {
+      const response = await apiClient.put(`${this.baseUrl}/${id}`, planData);
+
+      // Handle error response
+      if (response.error) {
+        throw new Error(response.error.message);
+      }
+
+      return response.data || response;
+    } catch (error) {
+      console.error("Error updating plan:", error);
+      throw error;
+    }
+  }
+
+  // Delete a plan
+  async deletePlan(id) {
+    try {
+      const response = await apiClient.delete(`${this.baseUrl}/${id}`);
+
+      // Handle error response
+      if (response.error) {
+        throw new Error(response.error.message);
+      }
+
+      return true;
+    } catch (error) {
+      console.error("Error deleting plan:", error);
       throw error;
     }
   }
