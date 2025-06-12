@@ -236,9 +236,7 @@ const Plans = () => {
 
   // Format price with currency (Indian Rupee)
   const formatPrice = (price, interval) => {
-    // Convert USD to INR (approximate exchange rate: 1 USD = 75 INR)
-    const inrAmount = price * 75;
-
+    // Display price directly in INR (no conversion needed)
     // Map interval to display suffix
     const intervalSuffix = {
       monthly: "/mo",
@@ -252,7 +250,7 @@ const Plans = () => {
         style: "currency",
         currency: "INR",
         maximumFractionDigits: 0,
-      }).format(inrAmount) + (intervalSuffix[interval] || "/mo")
+      }).format(price) + (intervalSuffix[interval] || "/mo")
     );
   };
 
