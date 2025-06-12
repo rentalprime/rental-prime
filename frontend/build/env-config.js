@@ -1,4 +1,0 @@
-window._env_ = {
-  "REACT_APP_BUILD_TIME": "2025-06-09T06:58:08.906Z",
-  "REACT_APP_VERSION": "0.1.0"
-};
