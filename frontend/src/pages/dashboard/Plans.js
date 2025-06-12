@@ -35,6 +35,7 @@ const Plans = () => {
     },
     status: "active",
   });
+  const [isUnlimitedListings, setIsUnlimitedListings] = useState(false);
 
   // Fetch plans on component mount and when filters change
   useEffect(() => {
@@ -96,6 +97,22 @@ const Plans = () => {
     }
   };
 
+  // Handle unlimited listings toggle
+  const handleUnlimitedListingsChange = (e) => {
+    const isUnlimited = e.target.checked;
+    setIsUnlimitedListings(isUnlimited);
+
+    if (isUnlimited) {
+      setFormData({
+        ...formData,
+        features: {
+          ...formData.features,
+          listings: "", // Clear the number input when unlimited is selected
+        },
+      });
+    }
+  };
+
   // Open modal for adding a new plan
   const openAddModal = () => {
     setModalMode("add");
@@ -113,6 +130,7 @@ const Plans = () => {
       },
       status: "active",
     });
+    setIsUnlimitedListings(false);
     setShowModal(true);
   };
 
@@ -130,6 +148,8 @@ const Plans = () => {
       analytics: false,
     };
 
+    let isUnlimited = false;
+
     if (plan.features) {
       if (Array.isArray(plan.features)) {
         // Old format - convert array to object (fallback)
@@ -142,11 +162,18 @@ const Plans = () => {
         };
       } else if (typeof plan.features === "object" && plan.features !== null) {
         // New format - use the object directly
+        // Check if listings is unlimited (null, -1, or "unlimited")
+        const listingsValue = plan.features.listings;
+        isUnlimited =
+          listingsValue === null ||
+          listingsValue === -1 ||
+          listingsValue === "unlimited";
+
         featuresData = {
           users: plan.features.users?.toString() || "",
           support: plan.features.support || "email",
           featured: plan.features.featured?.toString() || "",
-          listings: plan.features.listings?.toString() || "",
+          listings: isUnlimited ? "" : listingsValue?.toString() || "",
           analytics: Boolean(plan.features.analytics),
         };
       }
@@ -162,6 +189,7 @@ const Plans = () => {
     };
 
     setFormData(formDataToSet);
+    setIsUnlimitedListings(isUnlimited);
     setShowModal(true);
   };
 
@@ -170,7 +198,10 @@ const Plans = () => {
     e.preventDefault();
 
     // Validate required feature fields
-    if (!formData.features.users || !formData.features.listings) {
+    if (
+      !formData.features.users ||
+      (!formData.features.listings && !isUnlimitedListings)
+    ) {
       toast.error(
         "Please fill in all required feature fields (users and listings)"
       );
@@ -190,7 +221,9 @@ const Plans = () => {
       users: parseInt(formData.features.users) || 0,
       support: formData.features.support,
       featured: parseInt(formData.features.featured) || 0,
-      listings: parseInt(formData.features.listings) || 0,
+      listings: isUnlimitedListings
+        ? -1
+        : parseInt(formData.features.listings) || 0,
       analytics: formData.features.analytics,
     };
 
@@ -464,7 +497,12 @@ const Plans = () => {
                       <li className="flex items-start">
                         <RiCheckLine className="w-5 h-5 text-green-500 mr-2 flex-shrink-0 mt-0.5" />
                         <span className="text-sm text-gray-600">
-                          Max Listings: {plan.features.listings}
+                          Max Listings:{" "}
+                          {plan.features.listings === -1 ||
+                          plan.features.listings === null ||
+                          plan.features.listings === "unlimited"
+                            ? "Unlimited"
+                            : plan.features.listings}
                         </span>
                       </li>
                       <li className="flex items-start">
@@ -672,23 +710,35 @@ const Plans = () => {
                         />
                       </div>
                       <div>
-                        <label
-                          htmlFor="features.listings"
-                          className="block text-sm font-medium text-gray-600 mb-1"
-                        >
+                        <label className="block text-sm font-medium text-gray-600 mb-1">
                           Max Listings *
                         </label>
-                        <input
-                          type="number"
-                          id="features.listings"
-                          name="features.listings"
-                          value={formData.features.listings}
-                          onChange={handleChange}
-                          className="input"
-                          min="1"
-                          required
-                          placeholder="e.g., 2"
-                        />
+                        <div className="space-y-2">
+                          <label className="flex items-center">
+                            <input
+                              type="checkbox"
+                              checked={isUnlimitedListings}
+                              onChange={handleUnlimitedListingsChange}
+                              className="mr-2 h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                            />
+                            <span className="text-sm text-gray-600">
+                              Unlimited Listings
+                            </span>
+                          </label>
+                          {!isUnlimitedListings && (
+                            <input
+                              type="number"
+                              id="features.listings"
+                              name="features.listings"
+                              value={formData.features.listings}
+                              onChange={handleChange}
+                              className="input w-full"
+                              min="1"
+                              required={!isUnlimitedListings}
+                              placeholder="e.g., 2"
+                            />
+                          )}
+                        </div>
                       </div>
                       <div>
                         <label
