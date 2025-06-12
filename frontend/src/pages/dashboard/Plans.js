@@ -222,7 +222,7 @@ const Plans = () => {
       support: formData.features.support,
       featured: parseInt(formData.features.featured) || 0,
       listings: isUnlimitedListings
-        ? -1
+        ? "unlimited"
         : parseInt(formData.features.listings) || 0,
       analytics: formData.features.analytics,
     };

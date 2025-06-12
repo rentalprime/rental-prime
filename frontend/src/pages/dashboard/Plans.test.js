@@ -61,7 +61,7 @@ const mockPlans = [
       users: 5,
       support: "chat",
       featured: 2,
-      listings: -1, // Unlimited listings
+      listings: "unlimited", // Unlimited listings
       analytics: true,
     },
     status: "active",
@@ -201,7 +201,7 @@ describe("Plans Component", () => {
       expect(planService.createPlan).toHaveBeenCalledWith(
         expect.objectContaining({
           features: expect.objectContaining({
-            listings: -1, // Should be -1 for unlimited
+            listings: "unlimited", // Should be "unlimited" for unlimited
           }),
         })
       );
