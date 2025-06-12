@@ -7,6 +7,8 @@ import {
   RiCloseLine,
   RiCheckLine,
   RiTimeLine,
+  RiUserLine,
+  RiGroupLine,
 } from "react-icons/ri";
 import planService from "../../services/planService";
 
@@ -16,6 +18,9 @@ const Plans = () => {
   const [showModal, setShowModal] = useState(false);
   const [modalMode, setModalMode] = useState("add"); // 'add' or 'edit'
   const [currentPlan, setCurrentPlan] = useState(null);
+  const [sortBy, setSortBy] = useState("subscriber_count"); // 'name', 'price', 'subscriber_count', 'created_at'
+  const [sortOrder, setSortOrder] = useState("desc"); // 'asc' or 'desc'
+  const [statusFilter, setStatusFilter] = useState("all"); // 'all', 'active', 'inactive'
   const [formData, setFormData] = useState({
     name: "",
     description: "",
@@ -31,16 +36,23 @@ const Plans = () => {
     status: "active",
   });
 
-  // Fetch plans on component mount
+  // Fetch plans on component mount and when filters change
   useEffect(() => {
     fetchPlans();
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sortBy, sortOrder, statusFilter]);
 
-  // Fetch plans from API
+  // Fetch plans from API with subscriber counts
   const fetchPlans = async () => {
     try {
       setLoading(true);
-      const data = await planService.getPlans();
+      const filters = {
+        status: statusFilter,
+        orderBy: sortBy,
+        orderDirection: sortOrder,
+      };
+
+      const data = await planService.getPlansWithSubscribers(filters);
 
       // Transform data to match expected format
       const transformedPlans = data.map((plan) => ({
@@ -49,7 +61,9 @@ const Plans = () => {
         createdAt: plan.created_at, // Map created_at to createdAt
         // Keep features in their original format for proper editing
         features: plan.features || {},
-        subscribers: plan.subscribers || 0,
+        // Use subscriber_count from API response
+        subscribers: plan.subscriber_count || 0,
+        totalSubscriptions: plan.total_subscriptions || 0,
       }));
 
       setPlans(transformedPlans);
@@ -273,6 +287,125 @@ const Plans = () => {
         </button>
       </div>
 
+      {/* Filter and Sort Controls */}
+      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
+        <div className="flex flex-wrap gap-4 items-center">
+          <div className="flex items-center space-x-2">
+            <label className="text-sm font-medium text-gray-700">Status:</label>
+            <select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+              className="text-sm border border-gray-300 rounded-md px-3 py-1 focus:outline-none focus:ring-2 focus:ring-primary-500"
+            >
+              <option value="all">All Plans</option>
+              <option value="active">Active Only</option>
+              <option value="inactive">Inactive Only</option>
+            </select>
+          </div>
+
+          <div className="flex items-center space-x-2">
+            <label className="text-sm font-medium text-gray-700">
+              Sort by:
+            </label>
+            <select
+              value={sortBy}
+              onChange={(e) => setSortBy(e.target.value)}
+              className="text-sm border border-gray-300 rounded-md px-3 py-1 focus:outline-none focus:ring-2 focus:ring-primary-500"
+            >
+              <option value="subscriber_count">Subscribers</option>
+              <option value="name">Plan Name</option>
+              <option value="price">Price</option>
+              <option value="created_at">Created Date</option>
+            </select>
+          </div>
+
+          <div className="flex items-center space-x-2">
+            <label className="text-sm font-medium text-gray-700">Order:</label>
+            <select
+              value={sortOrder}
+              onChange={(e) => setSortOrder(e.target.value)}
+              className="text-sm border border-gray-300 rounded-md px-3 py-1 focus:outline-none focus:ring-2 focus:ring-primary-500"
+            >
+              <option value="desc">Descending</option>
+              <option value="asc">Ascending</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      {/* Summary Statistics */}
+      {!loading && plans.length > 0 && (
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
+            <div className="flex items-center">
+              <div className="p-2 bg-blue-100 rounded-lg">
+                <RiGroupLine className="w-6 h-6 text-blue-600" />
+              </div>
+              <div className="ml-3">
+                <p className="text-sm font-medium text-gray-500">Total Plans</p>
+                <p className="text-2xl font-bold text-gray-900">
+                  {plans.length}
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
+            <div className="flex items-center">
+              <div className="p-2 bg-green-100 rounded-lg">
+                <RiUserLine className="w-6 h-6 text-green-600" />
+              </div>
+              <div className="ml-3">
+                <p className="text-sm font-medium text-gray-500">
+                  Active Subscribers
+                </p>
+                <p className="text-2xl font-bold text-gray-900">
+                  {plans.reduce(
+                    (sum, plan) => sum + (plan.subscribers || 0),
+                    0
+                  )}
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
+            <div className="flex items-center">
+              <div className="p-2 bg-purple-100 rounded-lg">
+                <RiGroupLine className="w-6 h-6 text-purple-600" />
+              </div>
+              <div className="ml-3">
+                <p className="text-sm font-medium text-gray-500">
+                  Total Subscriptions
+                </p>
+                <p className="text-2xl font-bold text-gray-900">
+                  {plans.reduce(
+                    (sum, plan) => sum + (plan.totalSubscriptions || 0),
+                    0
+                  )}
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
+            <div className="flex items-center">
+              <div className="p-2 bg-yellow-100 rounded-lg">
+                <RiCheckLine className="w-6 h-6 text-yellow-600" />
+              </div>
+              <div className="ml-3">
+                <p className="text-sm font-medium text-gray-500">
+                  Active Plans
+                </p>
+                <p className="text-2xl font-bold text-gray-900">
+                  {plans.filter((plan) => plan.status === "active").length}
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Plans Grid */}
       {loading ? (
         <div className="flex justify-center items-center py-8">
@@ -370,9 +503,21 @@ const Plans = () => {
                   <RiTimeLine className="w-4 h-4 mr-1" />
                   <span>Created: {formatDate(plan.createdAt)}</span>
                 </div>
-                <div>
-                  <span className="font-medium">{plan.subscribers}</span>{" "}
-                  subscribers
+                <div className="text-right">
+                  <div className="flex items-center justify-end">
+                    <RiUserLine className="w-3 h-3 text-green-600 mr-1" />
+                    <span className="font-medium text-green-600">
+                      {plan.subscribers}
+                    </span>{" "}
+                    <span className="text-xs ml-1">active</span>
+                  </div>
+                  <div className="flex items-center justify-end">
+                    <RiGroupLine className="w-3 h-3 text-gray-500 mr-1" />
+                    <span className="font-medium">
+                      {plan.totalSubscriptions}
+                    </span>{" "}
+                    <span className="text-xs ml-1">total</span>
+                  </div>
                 </div>
               </div>
 

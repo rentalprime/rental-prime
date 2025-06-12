@@ -40,6 +40,26 @@ class PlanService extends BaseService {
     }
   }
 
+  // Get plans with subscriber counts
+  async getPlansWithSubscribers(filters = {}) {
+    try {
+      const response = await apiClient.get(
+        `${this.baseUrl}/subscribers`,
+        filters
+      );
+
+      // Handle error response
+      if (response.error) {
+        throw new Error(response.error.message);
+      }
+
+      return response.data || response;
+    } catch (error) {
+      console.error("Error fetching plans with subscribers:", error);
+      throw error;
+    }
+  }
+
   // Create a new plan
   async createPlan(planData) {
     try {
@@ -92,4 +112,5 @@ class PlanService extends BaseService {
   }
 }
 
-export default new PlanService();
+const planService = new PlanService();
+export default planService;
