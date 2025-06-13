@@ -73,12 +73,12 @@ class ListingService extends BaseService {
         queryParams.append("orderDirection", filters.orderDirection);
       }
 
-      // Use the public API endpoint to get vendor listings only
+      // Use the admin API endpoint to get all listings (admin + vendor)
       const apiUrl =
         process.env.REACT_APP_API_URL ||
         "https://rental-prime-backend-8ilt.onrender.com";
-      const fullUrl = `${apiUrl}/api/listings?${queryParams.toString()}`;
-      console.log("Fetching vendor listings from URL:", fullUrl);
+      const fullUrl = `${apiUrl}/api/admin/listings?${queryParams.toString()}`;
+      console.log("Fetching admin listings from URL:", fullUrl);
 
       const response = await fetch(fullUrl, {
         method: "GET",
@@ -92,12 +92,12 @@ class ListingService extends BaseService {
 
       if (!response.ok) {
         const errorData = await response.json();
-        console.error("API error fetching listings:", errorData);
+        console.error("API error fetching admin listings:", errorData);
         return {
           data: [],
           count: 0,
           success: false,
-          error: errorData.message || "Failed to fetch listings",
+          error: errorData.message || "Failed to fetch admin listings",
         };
       }
 

@@ -9,7 +9,7 @@ import {
   RiEyeLine,
 } from "react-icons/ri";
 import userService from "../../services/userService";
-import listingService from "../../services/listingService";
+import vendorListingService from "../../services/vendorListingService";
 
 const recentActivities = [
   {
@@ -92,8 +92,8 @@ const Dashboard = () => {
         totalUsers = usersData.count || 0;
       }
 
-      // Fetch listings count - get all listings for total count
-      const listingsResponse = await listingService.getListings({});
+      // Fetch vendor listings count - get only vendor listings for dashboard
+      const listingsResponse = await vendorListingService.getVendorListings({});
       const totalListings = listingsResponse.count || 0;
 
       setDashboardStats({
