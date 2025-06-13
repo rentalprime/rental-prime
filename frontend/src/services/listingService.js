@@ -398,12 +398,32 @@ class ListingService extends BaseService {
    */
   async countListingsByCategory(categoryId) {
     try {
-      // This method would need to be implemented via API
-      // For now, return 0 as a placeholder
-      console.warn(
-        `countListingsByCategory not implemented via API yet for category: ${categoryId}`
-      );
-      return 0;
+      console.log(`Counting listings for category ID: ${categoryId}`);
+
+      const apiUrl =
+        process.env.REACT_APP_API_URL ||
+        "https://rental-prime-backend-8ilt.onrender.com";
+      const fullUrl = `${apiUrl}/api/listings/category/${categoryId}`;
+
+      const response = await fetch(fullUrl, {
+        method: "GET",
+        headers: {
+          "Content-Type": "application/json",
+        },
+      });
+
+      if (!response.ok) {
+        console.error(
+          `Failed to fetch listings for category ${categoryId}:`,
+          response.status
+        );
+        return 0;
+      }
+
+      const result = await response.json();
+      const count = result.count || 0;
+      console.log(`Found ${count} listings for category ${categoryId}`);
+      return count;
     } catch (error) {
       console.error("Error counting listings by category:", error);
       return 0;

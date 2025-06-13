@@ -251,13 +251,16 @@ const Categories = () => {
         orderDirection: "desc",
       };
 
-      const data = await categoryService.getCategories(filters);
+      // Use the new method that includes listing counts
+      const data = await categoryService.getCategoriesWithListingCounts(
+        filters
+      );
 
       // Transform the data using the processIconData helper
       const transformedData = data.map((category) => processIconData(category));
 
       setCategories(transformedData);
-      console.log("Categories loaded:", transformedData);
+      console.log("Categories loaded with listing counts:", transformedData);
     } catch (error) {
       console.error("Error fetching categories:", error);
       toast.error(

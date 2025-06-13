@@ -361,6 +361,55 @@ class CategoryService extends BaseService {
       throw error;
     }
   }
+
+  /**
+   * Get categories with listing counts
+   * @param {Object} filters - Filter criteria
+   * @returns {Promise<Array>} Array of categories with listing counts
+   */
+  async getCategoriesWithListingCounts(filters = {}) {
+    try {
+      console.log("Fetching categories with listing counts");
+
+      // First get the categories
+      const categories = await this.getCategories(filters);
+
+      // Import listing service dynamically to avoid circular dependency
+      const { default: listingService } = await import("./listingService");
+
+      // Fetch listing counts for each category
+      const categoriesWithCounts = await Promise.all(
+        categories.map(async (category) => {
+          try {
+            const listingsCount = await listingService.countListingsByCategory(
+              category.id
+            );
+            return {
+              ...category,
+              listingsCount,
+            };
+          } catch (error) {
+            console.error(
+              `Error fetching count for category ${category.id}:`,
+              error
+            );
+            return {
+              ...category,
+              listingsCount: 0,
+            };
+          }
+        })
+      );
+
+      console.log(
+        `Successfully fetched ${categoriesWithCounts.length} categories with listing counts`
+      );
+      return categoriesWithCounts;
+    } catch (error) {
+      console.error("Error fetching categories with listing counts:", error);
+      throw error;
+    }
+  }
 }
 
 export default new CategoryService();
