@@ -240,7 +240,7 @@ const Categories = () => {
     });
   };
 
-  // Function to fetch categories with optional filters
+  // Function to fetch categories with optional filters and listing counts
   const fetchCategories = async () => {
     setLoading(true);
     try {
@@ -251,13 +251,16 @@ const Categories = () => {
         orderDirection: "desc",
       };
 
-      const data = await categoryService.getCategories(filters);
+      console.log("Fetching categories with listing counts...");
+      const data = await categoryService.getCategoriesWithListingCounts(
+        filters
+      );
 
       // Transform the data using the processIconData helper
       const transformedData = data.map((category) => processIconData(category));
 
       setCategories(transformedData);
-      console.log("Categories loaded:", transformedData);
+      console.log("Categories loaded with listing counts:", transformedData);
     } catch (error) {
       console.error("Error fetching categories:", error);
       toast.error(
