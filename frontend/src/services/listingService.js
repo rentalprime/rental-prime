@@ -1,5 +1,4 @@
 import BaseService from "./baseService";
-import categoryCountManager from "../utils/categoryCountManager";
 
 class ListingService extends BaseService {
   constructor() {
@@ -177,55 +176,6 @@ class ListingService extends BaseService {
   }
 
   /**
-   * Get a single listing by ID
-   * @param {string} id - Listing ID
-   * @returns {Promise<Object>} Listing data
-   */
-  async getListingById(id) {
-    try {
-      console.log(`Fetching listing with ID ${id}`);
-
-      if (!id) {
-        throw new Error("Listing ID is required");
-      }
-
-      // Use the admin API endpoint for admin dashboard
-      const apiUrl = process.env.REACT_APP_API_URL || "http://localhost:5001";
-      const fullUrl = `${apiUrl}/api/admin/listings/${id}`;
-      console.log("Fetching admin listing from URL:", fullUrl);
-
-      const response = await fetch(fullUrl, {
-        method: "GET",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${localStorage.getItem("token")}`,
-        },
-      });
-
-      console.log("Response status:", response.status);
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.message || `Failed to fetch listing ${id}`);
-      }
-
-      const data = await response.json();
-      console.log("Listing fetched successfully:", data);
-
-      // Return the data from the response
-      if (data.success && data.data) {
-        return data.data;
-      }
-
-      // Fallback for unexpected response format
-      return data;
-    } catch (error) {
-      console.error("Error fetching listing:", error);
-      throw error;
-    }
-  }
-
-  /**
    * Create a new listing
    * @param {Object} listing - Listing data
    * @returns {Promise<Object>} Created listing
@@ -280,24 +230,10 @@ class ListingService extends BaseService {
 
       // Return the data from the response
       if (data.success && data.data) {
-        // Notify category count manager about the new listing
-        if (data.data.category_id) {
-          categoryCountManager.notifyListingChange({
-            newCategoryId: data.data.category_id,
-            action: "create",
-          });
-        }
         return data.data;
       }
 
       // Fallback for unexpected response format
-      // Try to notify even with fallback data
-      if (data.category_id) {
-        categoryCountManager.notifyListingChange({
-          newCategoryId: data.category_id,
-          action: "create",
-        });
-      }
       return data;
     } catch (error) {
       console.error("Error creating listing:", error);
@@ -316,17 +252,6 @@ class ListingService extends BaseService {
       console.log(`Updating listing ${id} with data:`, updates);
 
       if (!id) throw new Error("Listing ID is required");
-
-      // Get the current listing to check for category changes
-      let currentListing = null;
-      try {
-        currentListing = await this.getListingById(id);
-      } catch (error) {
-        console.warn(
-          "Could not fetch current listing for category change detection:",
-          error
-        );
-      }
 
       // Ensure price is a number if provided
       let updatedData = { ...updates };
@@ -365,34 +290,10 @@ class ListingService extends BaseService {
 
       // Return the data from the response
       if (data.success && data.data) {
-        // Notify category count manager about category changes
-        const oldCategoryId = currentListing?.category_id;
-        const newCategoryId = data.data.category_id;
-
-        if (oldCategoryId !== newCategoryId) {
-          categoryCountManager.notifyListingChange({
-            oldCategoryId: oldCategoryId,
-            newCategoryId: newCategoryId,
-            action: "update",
-          });
-        }
-
         return data.data;
       }
 
       // Fallback for unexpected response format
-      // Try to notify even with fallback data
-      const oldCategoryId = currentListing?.category_id;
-      const newCategoryId = data.category_id;
-
-      if (oldCategoryId !== newCategoryId) {
-        categoryCountManager.notifyListingChange({
-          oldCategoryId: oldCategoryId,
-          newCategoryId: newCategoryId,
-          action: "update",
-        });
-      }
-
       return data;
     } catch (error) {
       console.error("Error updating listing:", error);
@@ -411,17 +312,6 @@ class ListingService extends BaseService {
 
       if (!id) {
         throw new Error("Listing ID is required");
-      }
-
-      // Get the current listing to get its category before deletion
-      let currentListing = null;
-      try {
-        currentListing = await this.getListingById(id);
-      } catch (error) {
-        console.warn(
-          "Could not fetch current listing for category count update:",
-          error
-        );
       }
 
       // Use the admin API endpoint for admin dashboard
@@ -444,14 +334,6 @@ class ListingService extends BaseService {
       }
 
       console.log("Listing deleted successfully");
-
-      // Notify category count manager about the deleted listing
-      if (currentListing?.category_id) {
-        categoryCountManager.notifyListingChange({
-          oldCategoryId: currentListing.category_id,
-          action: "delete",
-        });
-      }
     } catch (error) {
       console.error("Error deleting listing:", error);
       throw error;

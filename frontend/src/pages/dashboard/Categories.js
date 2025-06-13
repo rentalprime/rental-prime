@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { toast } from "react-hot-toast";
 import categoryService from "../../services/categoryService";
-import categoryCountManager from "../../utils/categoryCountManager";
 import {
   RiAddLine,
   RiEdit2Line,
@@ -124,61 +123,6 @@ const Categories = () => {
     }
   }, [searchTerm, viewMode]);
 
-  // Effect to listen for category count updates
-  useEffect(() => {
-    const unsubscribe = categoryCountManager.onRefreshNeeded(
-      (updatedCounts, categoryIds, fullRefresh) => {
-        if (fullRefresh) {
-          // Full refresh requested
-          console.log("🔄 Full category refresh requested");
-          fetchCategories();
-          if (viewMode === "tree") {
-            fetchCategoryTree();
-          }
-        } else if (updatedCounts && categoryIds) {
-          // Partial refresh - update specific categories
-          console.log("🔄 Updating specific category counts:", updatedCounts);
-
-          setCategories((prevCategories) =>
-            prevCategories.map((category) => {
-              if (categoryIds.includes(category.id)) {
-                return {
-                  ...category,
-                  listingsCount: updatedCounts[category.id] || 0,
-                };
-              }
-              return category;
-            })
-          );
-
-          // Also update tree view if active
-          if (viewMode === "tree") {
-            setCategoryTree((prevTree) =>
-              updateTreeCounts(prevTree, updatedCounts)
-            );
-          }
-        }
-      }
-    );
-
-    // Cleanup subscription on unmount
-    return unsubscribe;
-  }, [viewMode]);
-
-  // Helper function to update counts in tree structure
-  const updateTreeCounts = (tree, updatedCounts) => {
-    return tree.map((category) => ({
-      ...category,
-      listingsCount:
-        updatedCounts[category.id] !== undefined
-          ? updatedCounts[category.id]
-          : category.listingsCount,
-      children: category.children
-        ? updateTreeCounts(category.children, updatedCounts)
-        : category.children,
-    }));
-  };
-
   // Render a single category in the tree view
   const renderCategoryNode = (category) => {
     return (
@@ -202,7 +146,7 @@ const Categories = () => {
                 {category.description}
               </p>
             )}
-            {/* Show type badge and listing count */}
+            {/* Show type badge */}
             <div className="flex items-center mt-1 space-x-2">
               <span className="px-2 py-0.5 bg-blue-50 text-blue-700 text-xs rounded-full">
                 {category.parent_id ? "Subcategory" : "Main Category"}
@@ -215,9 +159,6 @@ const Categories = () => {
                 }`}
               >
                 {category.status}
-              </span>
-              <span className="px-2 py-0.5 bg-gray-50 text-gray-700 text-xs rounded-full">
-                {category.listingsCount || 0} listings
               </span>
             </div>
           </div>
@@ -270,9 +211,9 @@ const Categories = () => {
       const data = await categoryService.getCategoryTree();
       console.log("Raw tree data:", data);
 
-      // Process the data to ensure icons are properly formatted for rendering and fetch listing counts
-      const processedTree = await processCategoryTreeIconsAndCounts(data);
-      console.log("Processed tree with icons and counts:", processedTree);
+      // Process the data to ensure icons are properly formatted for rendering
+      const processedTree = processCategoryTreeIcons(data);
+      console.log("Processed tree with icons:", processedTree);
 
       setCategoryTree(processedTree);
     } catch (error) {
@@ -281,38 +222,22 @@ const Categories = () => {
     }
   };
 
-  // Process the category tree to ensure icons are properly formatted for rendering and fetch listing counts
-  const processCategoryTreeIconsAndCounts = async (categories) => {
-    return await Promise.all(
-      categories.map(async (category) => {
-        // Use the processIconData helper to extract icon information
-        const processedCategory = processIconData(category);
+  // Process the category tree to ensure icons are properly formatted for rendering
+  const processCategoryTreeIcons = (categories) => {
+    return categories.map((category) => {
+      // Use the processIconData helper to extract icon information
+      const processedCategory = processIconData(category);
 
-        // Fetch listing count for this category
-        let listingCount = 0;
-        try {
-          listingCount = await categoryService.getCategoryListingCount(
-            category.id
-          );
-        } catch (error) {
-          console.error(
-            `Error fetching listing count for category ${category.id}:`,
-            error
-          );
-        }
+      // Process children recursively if they exist
+      const children = category.children
+        ? processCategoryTreeIcons(category.children)
+        : [];
 
-        // Process children recursively if they exist
-        const children = category.children
-          ? await processCategoryTreeIconsAndCounts(category.children)
-          : [];
-
-        return {
-          ...processedCategory,
-          listingsCount: listingCount,
-          children,
-        };
-      })
-    );
+      return {
+        ...processedCategory,
+        children,
+      };
+    });
   };
 
   // Function to fetch categories with optional filters
@@ -331,36 +256,8 @@ const Categories = () => {
       // Transform the data using the processIconData helper
       const transformedData = data.map((category) => processIconData(category));
 
-      // Fetch listing counts for each category
-      const categoriesWithCounts = await Promise.all(
-        transformedData.map(async (category) => {
-          try {
-            const listingCount = await categoryService.getCategoryListingCount(
-              category.id
-            );
-            return {
-              ...category,
-              listingsCount: listingCount,
-            };
-          } catch (error) {
-            console.error(
-              `Error fetching listing count for category ${category.id}:`,
-              error
-            );
-            return {
-              ...category,
-              listingsCount: 0,
-            };
-          }
-        })
-      );
-
-      setCategories(categoriesWithCounts);
-      console.log(
-        "🎯 Categories loaded with listing counts:",
-        categoriesWithCounts
-      );
-      console.log("📊 Sample category with count:", categoriesWithCounts[0]);
+      setCategories(transformedData);
+      console.log("Categories loaded:", transformedData);
     } catch (error) {
       console.error("Error fetching categories:", error);
       toast.error(
