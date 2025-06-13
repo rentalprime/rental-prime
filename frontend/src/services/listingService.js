@@ -73,10 +73,12 @@ class ListingService extends BaseService {
         queryParams.append("orderDirection", filters.orderDirection);
       }
 
-      // Use the admin API endpoint for admin dashboard
-      const apiUrl = process.env.REACT_APP_API_URL || "http://localhost:5001";
-      const fullUrl = `${apiUrl}/api/admin/listings?${queryParams.toString()}`;
-      console.log("Fetching admin listings from URL:", fullUrl);
+      // Use the public API endpoint to get vendor listings only
+      const apiUrl =
+        process.env.REACT_APP_API_URL ||
+        "https://rental-prime-backend-8ilt.onrender.com";
+      const fullUrl = `${apiUrl}/api/listings?${queryParams.toString()}`;
+      console.log("Fetching vendor listings from URL:", fullUrl);
 
       const response = await fetch(fullUrl, {
         method: "GET",
