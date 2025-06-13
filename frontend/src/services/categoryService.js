@@ -361,6 +361,69 @@ class CategoryService extends BaseService {
       throw error;
     }
   }
+
+  /**
+   * Get listing count for a specific category
+   * @param {string} categoryId - Category ID
+   * @returns {Promise<number>} Number of listings in the category
+   */
+  async getCategoryListingCount(categoryId) {
+    try {
+      console.log(`Fetching listing count for category ID: ${categoryId}`);
+      const response = await apiClient.get(
+        `/api/listings/category/${categoryId}`
+      );
+
+      if (response.error) {
+        throw new Error(response.error.message);
+      }
+
+      const count = response.count || 0;
+      console.log(`Category ${categoryId} has ${count} listings`);
+      return count;
+    } catch (error) {
+      console.error(
+        `Error fetching listing count for category ${categoryId}:`,
+        error
+      );
+      // Return 0 instead of throwing to prevent UI breaks
+      return 0;
+    }
+  }
+
+  /**
+   * Get listing counts for multiple categories
+   * @param {Array<string>} categoryIds - Array of category IDs
+   * @returns {Promise<Object>} Object with categoryId as key and count as value
+   */
+  async getCategoryListingCounts(categoryIds) {
+    try {
+      console.log(
+        `Fetching listing counts for ${categoryIds.length} categories`
+      );
+
+      // Fetch counts for all categories in parallel
+      const countPromises = categoryIds.map(async (categoryId) => {
+        const count = await this.getCategoryListingCount(categoryId);
+        return { categoryId, count };
+      });
+
+      const results = await Promise.all(countPromises);
+
+      // Convert to object format
+      const countsMap = results.reduce((acc, { categoryId, count }) => {
+        acc[categoryId] = count;
+        return acc;
+      }, {});
+
+      console.log(`Successfully fetched listing counts:`, countsMap);
+      return countsMap;
+    } catch (error) {
+      console.error("Error fetching category listing counts:", error);
+      // Return empty object instead of throwing to prevent UI breaks
+      return {};
+    }
+  }
 }
 
 export default new CategoryService();

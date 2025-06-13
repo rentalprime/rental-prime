@@ -38,6 +38,9 @@ const Categories = () => {
   const [categoryTree, setCategoryTree] = useState([]);
   // For grouped view - current parent category being viewed
   const [currentParentId, setCurrentParentId] = useState(null);
+  // Store listing counts for each category
+  const [listingCounts, setListingCounts] = useState({});
+  const [loadingCounts, setLoadingCounts] = useState(false);
 
   // Helper function to process icon data from backend response
   const processIconData = (category) => {
@@ -110,6 +113,26 @@ const Categories = () => {
     { emoji: "🌊", name: "Ocean Wave" },
   ];
 
+  // Fetch listing counts for all categories
+  const fetchListingCounts = async (categoryList) => {
+    if (!categoryList || categoryList.length === 0) return;
+
+    setLoadingCounts(true);
+    try {
+      const categoryIds = categoryList.map((cat) => cat.id);
+      const counts = await categoryService.getCategoryListingCounts(
+        categoryIds
+      );
+      setListingCounts(counts);
+      console.log("Listing counts loaded:", counts);
+    } catch (error) {
+      console.error("Error fetching listing counts:", error);
+      // Don't show error toast as this is not critical functionality
+    } finally {
+      setLoadingCounts(false);
+    }
+  };
+
   // Fetch categories on component mount and when filters change
   // Initial data loading
   useEffect(() => {
@@ -146,7 +169,7 @@ const Categories = () => {
                 {category.description}
               </p>
             )}
-            {/* Show type badge */}
+            {/* Show type badge and listing count */}
             <div className="flex items-center mt-1 space-x-2">
               <span className="px-2 py-0.5 bg-blue-50 text-blue-700 text-xs rounded-full">
                 {category.parent_id ? "Subcategory" : "Main Category"}
@@ -159,6 +182,11 @@ const Categories = () => {
                 }`}
               >
                 {category.status}
+              </span>
+              <span className="px-2 py-0.5 bg-purple-50 text-purple-700 text-xs rounded-full">
+                {loadingCounts
+                  ? "..."
+                  : `${listingCounts[category.id] || 0} listings`}
               </span>
             </div>
           </div>
@@ -216,6 +244,21 @@ const Categories = () => {
       console.log("Processed tree with icons:", processedTree);
 
       setCategoryTree(processedTree);
+
+      // Fetch listing counts for tree categories (flatten the tree to get all categories)
+      const flattenTree = (tree) => {
+        let result = [];
+        tree.forEach((category) => {
+          result.push(category);
+          if (category.children && category.children.length > 0) {
+            result = result.concat(flattenTree(category.children));
+          }
+        });
+        return result;
+      };
+
+      const allTreeCategories = flattenTree(processedTree);
+      fetchListingCounts(allTreeCategories);
     } catch (error) {
       console.error("Error fetching category tree:", error);
       toast.error("Failed to load category tree");
@@ -258,6 +301,9 @@ const Categories = () => {
 
       setCategories(transformedData);
       console.log("Categories loaded:", transformedData);
+
+      // Fetch listing counts for the loaded categories
+      fetchListingCounts(transformedData);
     } catch (error) {
       console.error("Error fetching categories:", error);
       toast.error(
@@ -499,6 +545,9 @@ const Categories = () => {
 
   const refreshCategories = () => {
     fetchCategories();
+    if (viewMode === "tree") {
+      fetchCategoryTree();
+    }
     toast.success("Categories refreshed");
   };
 
@@ -894,7 +943,7 @@ const Categories = () => {
                       </span>
                     </td>
                     <td className="px-4 py-4 text-sm text-gray-500">
-                      {category.listingsCount || 0}
+                      {loadingCounts ? "..." : listingCounts[category.id] || 0}
                     </td>
                     <td className="px-4 py-4 flex space-x-2">
                       <button
@@ -961,7 +1010,9 @@ const Categories = () => {
 
               <div className="mt-4 flex justify-between items-center text-sm text-gray-500">
                 <div>
-                  <span className="font-medium">{category.listingsCount}</span>{" "}
+                  <span className="font-medium">
+                    {loadingCounts ? "..." : listingCounts[category.id] || 0}
+                  </span>{" "}
                   listings
                 </div>
                 <div>Created: {formatDate(category.createdAt)}</div>
