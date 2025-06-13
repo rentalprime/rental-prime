@@ -310,31 +310,12 @@ class CategoryService extends BaseService {
       // First, get the categories
       const categories = await this.getCategories(filters);
 
-      // Import listingService dynamically to avoid circular dependency
-      const { default: listingService } = await import("./listingService");
-
-      // Fetch listing counts for each category
-      const categoriesWithCounts = await Promise.all(
-        categories.map(async (category) => {
-          try {
-            const listingsCount = await listingService.countListingsByCategory(
-              category.id
-            );
-            return {
-              ...category,
-              listingsCount,
-            };
-          } catch (error) {
-            console.error(
-              `Error fetching count for category ${category.id}:`,
-              error
-            );
-            return {
-              ...category,
-              listingsCount: 0,
-            };
-          }
-        })
+      // Use utility function to fetch listing counts
+      const { fetchListingCountsForCategories } = await import(
+        "../utils/categoryUtils"
+      );
+      const categoriesWithCounts = await fetchListingCountsForCategories(
+        categories
       );
 
       console.log(

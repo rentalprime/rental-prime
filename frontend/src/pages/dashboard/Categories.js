@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { toast } from "react-hot-toast";
 import categoryService from "../../services/categoryService";
+import { processCategoryTreeWithCounts } from "../../utils/categoryUtils";
 import {
   RiAddLine,
   RiEdit2Line,
@@ -245,41 +246,25 @@ const Categories = () => {
 
   // Process the category tree with icons and listing counts
   const processCategoryTreeIconsAndCounts = async (categories) => {
-    // Import listingService dynamically to avoid circular dependency
-    const { default: listingService } = await import(
-      "../services/listingService"
+    // First process with listing counts using utility function
+    const categoriesWithCounts = await processCategoryTreeWithCounts(
+      categories
     );
 
-    return Promise.all(
-      categories.map(async (category) => {
-        // Use the processIconData helper to extract icon information
-        const processedCategory = processIconData(category);
+    // Then process icons for each category recursively
+    return categoriesWithCounts.map((category) => {
+      const processedCategory = processIconData(category);
 
-        // Fetch listing count for this category
-        let listingsCount = 0;
-        try {
-          listingsCount = await listingService.countListingsByCategory(
-            category.id
-          );
-        } catch (error) {
-          console.error(
-            `Error fetching count for category ${category.id}:`,
-            error
-          );
-        }
+      // Process children recursively if they exist
+      const children = category.children
+        ? category.children.map((child) => processIconData(child))
+        : [];
 
-        // Process children recursively if they exist
-        const children = category.children
-          ? await processCategoryTreeIconsAndCounts(category.children)
-          : [];
-
-        return {
-          ...processedCategory,
-          listingsCount,
-          children,
-        };
-      })
-    );
+      return {
+        ...processedCategory,
+        children,
+      };
+    });
   };
 
   // Function to fetch categories with optional filters
