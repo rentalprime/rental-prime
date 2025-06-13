@@ -398,12 +398,14 @@ class ListingService extends BaseService {
    */
   async countListingsByCategory(categoryId) {
     try {
-      console.log(`Counting listings for category ID: ${categoryId}`);
+      console.log(`🔍 Counting listings for category ID: ${categoryId}`);
 
       const apiUrl =
         process.env.REACT_APP_API_URL ||
         "https://rental-prime-backend-8ilt.onrender.com";
       const fullUrl = `${apiUrl}/api/listings/category/${categoryId}`;
+
+      console.log(`📡 Making request to: ${fullUrl}`);
 
       const response = await fetch(fullUrl, {
         method: "GET",
@@ -412,20 +414,24 @@ class ListingService extends BaseService {
         },
       });
 
+      console.log(`📊 Response status: ${response.status}`);
+
       if (!response.ok) {
         console.error(
-          `Failed to fetch listings for category ${categoryId}:`,
+          `❌ Failed to fetch listings for category ${categoryId}:`,
           response.status
         );
         return 0;
       }
 
       const result = await response.json();
+      console.log(`📋 Full API response:`, result);
+
       const count = result.count || 0;
-      console.log(`Found ${count} listings for category ${categoryId}`);
+      console.log(`✅ Found ${count} listings for category ${categoryId}`);
       return count;
     } catch (error) {
-      console.error("Error counting listings by category:", error);
+      console.error("❌ Error counting listings by category:", error);
       return 0;
     }
   }
