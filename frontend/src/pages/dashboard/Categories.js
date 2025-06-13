@@ -146,7 +146,7 @@ const Categories = () => {
                 {category.description}
               </p>
             )}
-            {/* Show type badge */}
+            {/* Show type badge and listing count */}
             <div className="flex items-center mt-1 space-x-2">
               <span className="px-2 py-0.5 bg-blue-50 text-blue-700 text-xs rounded-full">
                 {category.parent_id ? "Subcategory" : "Main Category"}
@@ -159,6 +159,9 @@ const Categories = () => {
                 }`}
               >
                 {category.status}
+              </span>
+              <span className="px-2 py-0.5 bg-gray-50 text-gray-700 text-xs rounded-full">
+                {category.listingsCount || 0} listings
               </span>
             </div>
           </div>
@@ -212,8 +215,8 @@ const Categories = () => {
       console.log("Raw tree data:", data);
 
       // Process the data to ensure icons are properly formatted for rendering
-      const processedTree = processCategoryTreeIcons(data);
-      console.log("Processed tree with icons:", processedTree);
+      const processedTree = await processCategoryTreeIconsAndCounts(data);
+      console.log("Processed tree with icons and counts:", processedTree);
 
       setCategoryTree(processedTree);
     } catch (error) {
@@ -240,6 +243,45 @@ const Categories = () => {
     });
   };
 
+  // Process the category tree with icons and listing counts
+  const processCategoryTreeIconsAndCounts = async (categories) => {
+    // Import listingService dynamically to avoid circular dependency
+    const { default: listingService } = await import(
+      "../services/listingService"
+    );
+
+    return Promise.all(
+      categories.map(async (category) => {
+        // Use the processIconData helper to extract icon information
+        const processedCategory = processIconData(category);
+
+        // Fetch listing count for this category
+        let listingsCount = 0;
+        try {
+          listingsCount = await listingService.countListingsByCategory(
+            category.id
+          );
+        } catch (error) {
+          console.error(
+            `Error fetching count for category ${category.id}:`,
+            error
+          );
+        }
+
+        // Process children recursively if they exist
+        const children = category.children
+          ? await processCategoryTreeIconsAndCounts(category.children)
+          : [];
+
+        return {
+          ...processedCategory,
+          listingsCount,
+          children,
+        };
+      })
+    );
+  };
+
   // Function to fetch categories with optional filters
   const fetchCategories = async () => {
     setLoading(true);
@@ -251,13 +293,16 @@ const Categories = () => {
         orderDirection: "desc",
       };
 
-      const data = await categoryService.getCategories(filters);
+      // Use the new method that fetches categories with listing counts
+      const data = await categoryService.getCategoriesWithListingCounts(
+        filters
+      );
 
       // Transform the data using the processIconData helper
       const transformedData = data.map((category) => processIconData(category));
 
       setCategories(transformedData);
-      console.log("Categories loaded:", transformedData);
+      console.log("Categories loaded with listing counts:", transformedData);
     } catch (error) {
       console.error("Error fetching categories:", error);
       toast.error(
@@ -451,9 +496,14 @@ const Categories = () => {
           return;
         }
 
-        // Process the returned category to extract icon data
-        const processedCategory = processIconData(newCategory);
-        setCategories([processedCategory, ...categories]);
+        // Refresh categories to get updated listing counts
+        fetchCategories();
+
+        // Also refresh tree view if needed
+        if (viewMode === "tree") {
+          fetchCategoryTree();
+        }
+
         toast.success("Category added successfully");
       } else if (modalMode === "edit" && currentCategory) {
         const updatedCategory = await categoryService.updateCategory(
@@ -519,10 +569,8 @@ const Categories = () => {
       setLoading(true);
       await categoryService.deleteCategory(categoryId);
 
-      // Remove the category from the state
-      setCategories(
-        categories.filter((category) => category.id !== categoryId)
-      );
+      // Refresh categories to get updated listing counts
+      fetchCategories();
 
       // If we're in tree view, refresh the tree
       if (viewMode === "tree") {
