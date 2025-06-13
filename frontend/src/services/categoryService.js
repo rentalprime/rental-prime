@@ -299,6 +299,40 @@ class CategoryService extends BaseService {
   }
 
   /**
+   * Get listing count for a specific category
+   * @param {string} categoryId - Category ID
+   * @returns {Promise<number>} Number of listings in the category
+   */
+  async getCategoryListingCount(categoryId) {
+    try {
+      console.log(`Fetching listing count for category ID: ${categoryId}`);
+
+      // Use the correct endpoint for getting listings by category
+      const response = await apiClient.get(
+        `/api/listings/category/${categoryId}`
+      );
+
+      if (response.error) {
+        console.warn(
+          `Error fetching listing count for category ${categoryId}:`,
+          response.error
+        );
+        return 0;
+      }
+
+      const count = response.count || 0;
+      console.log(`Category ${categoryId} has ${count} listings`);
+      return count;
+    } catch (error) {
+      console.error(
+        `Error fetching listing count for category ${categoryId}:`,
+        error
+      );
+      return 0;
+    }
+  }
+
+  /**
    * Get categories formatted for dropdown/select components
    * @returns {Promise<Array>} Array of categories with label/value format
    */

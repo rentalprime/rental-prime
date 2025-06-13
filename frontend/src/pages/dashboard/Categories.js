@@ -146,7 +146,7 @@ const Categories = () => {
                 {category.description}
               </p>
             )}
-            {/* Show type badge */}
+            {/* Show type badge and listing count */}
             <div className="flex items-center mt-1 space-x-2">
               <span className="px-2 py-0.5 bg-blue-50 text-blue-700 text-xs rounded-full">
                 {category.parent_id ? "Subcategory" : "Main Category"}
@@ -159,6 +159,9 @@ const Categories = () => {
                 }`}
               >
                 {category.status}
+              </span>
+              <span className="px-2 py-0.5 bg-gray-50 text-gray-700 text-xs rounded-full">
+                {category.listingsCount || 0} listings
               </span>
             </div>
           </div>
@@ -211,9 +214,9 @@ const Categories = () => {
       const data = await categoryService.getCategoryTree();
       console.log("Raw tree data:", data);
 
-      // Process the data to ensure icons are properly formatted for rendering
-      const processedTree = processCategoryTreeIcons(data);
-      console.log("Processed tree with icons:", processedTree);
+      // Process the data to ensure icons are properly formatted for rendering and fetch listing counts
+      const processedTree = await processCategoryTreeIconsAndCounts(data);
+      console.log("Processed tree with icons and counts:", processedTree);
 
       setCategoryTree(processedTree);
     } catch (error) {
@@ -222,22 +225,38 @@ const Categories = () => {
     }
   };
 
-  // Process the category tree to ensure icons are properly formatted for rendering
-  const processCategoryTreeIcons = (categories) => {
-    return categories.map((category) => {
-      // Use the processIconData helper to extract icon information
-      const processedCategory = processIconData(category);
+  // Process the category tree to ensure icons are properly formatted for rendering and fetch listing counts
+  const processCategoryTreeIconsAndCounts = async (categories) => {
+    return await Promise.all(
+      categories.map(async (category) => {
+        // Use the processIconData helper to extract icon information
+        const processedCategory = processIconData(category);
 
-      // Process children recursively if they exist
-      const children = category.children
-        ? processCategoryTreeIcons(category.children)
-        : [];
+        // Fetch listing count for this category
+        let listingCount = 0;
+        try {
+          listingCount = await categoryService.getCategoryListingCount(
+            category.id
+          );
+        } catch (error) {
+          console.error(
+            `Error fetching listing count for category ${category.id}:`,
+            error
+          );
+        }
 
-      return {
-        ...processedCategory,
-        children,
-      };
-    });
+        // Process children recursively if they exist
+        const children = category.children
+          ? await processCategoryTreeIconsAndCounts(category.children)
+          : [];
+
+        return {
+          ...processedCategory,
+          listingsCount: listingCount,
+          children,
+        };
+      })
+    );
   };
 
   // Function to fetch categories with optional filters
@@ -256,8 +275,35 @@ const Categories = () => {
       // Transform the data using the processIconData helper
       const transformedData = data.map((category) => processIconData(category));
 
-      setCategories(transformedData);
-      console.log("Categories loaded:", transformedData);
+      // Fetch listing counts for each category
+      const categoriesWithCounts = await Promise.all(
+        transformedData.map(async (category) => {
+          try {
+            const listingCount = await categoryService.getCategoryListingCount(
+              category.id
+            );
+            return {
+              ...category,
+              listingsCount: listingCount,
+            };
+          } catch (error) {
+            console.error(
+              `Error fetching listing count for category ${category.id}:`,
+              error
+            );
+            return {
+              ...category,
+              listingsCount: 0,
+            };
+          }
+        })
+      );
+
+      setCategories(categoriesWithCounts);
+      console.log(
+        "Categories loaded with listing counts:",
+        categoriesWithCounts
+      );
     } catch (error) {
       console.error("Error fetching categories:", error);
       toast.error(
