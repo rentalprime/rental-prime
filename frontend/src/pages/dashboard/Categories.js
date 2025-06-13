@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { toast } from "react-hot-toast";
 import categoryService from "../../services/categoryService";
-import { processCategoryTreeWithCounts } from "../../utils/categoryUtils";
 import {
   RiAddLine,
   RiEdit2Line,
@@ -147,7 +146,7 @@ const Categories = () => {
                 {category.description}
               </p>
             )}
-            {/* Show type badge and listing count */}
+            {/* Show type badge */}
             <div className="flex items-center mt-1 space-x-2">
               <span className="px-2 py-0.5 bg-blue-50 text-blue-700 text-xs rounded-full">
                 {category.parent_id ? "Subcategory" : "Main Category"}
@@ -160,9 +159,6 @@ const Categories = () => {
                 }`}
               >
                 {category.status}
-              </span>
-              <span className="px-2 py-0.5 bg-gray-50 text-gray-700 text-xs rounded-full">
-                {category.listingsCount || 0} listings
               </span>
             </div>
           </div>
@@ -216,8 +212,8 @@ const Categories = () => {
       console.log("Raw tree data:", data);
 
       // Process the data to ensure icons are properly formatted for rendering
-      const processedTree = await processCategoryTreeIconsAndCounts(data);
-      console.log("Processed tree with icons and counts:", processedTree);
+      const processedTree = processCategoryTreeIcons(data);
+      console.log("Processed tree with icons:", processedTree);
 
       setCategoryTree(processedTree);
     } catch (error) {
@@ -244,29 +240,6 @@ const Categories = () => {
     });
   };
 
-  // Process the category tree with icons and listing counts
-  const processCategoryTreeIconsAndCounts = async (categories) => {
-    // First process with listing counts using utility function
-    const categoriesWithCounts = await processCategoryTreeWithCounts(
-      categories
-    );
-
-    // Then process icons for each category recursively
-    return categoriesWithCounts.map((category) => {
-      const processedCategory = processIconData(category);
-
-      // Process children recursively if they exist
-      const children = category.children
-        ? category.children.map((child) => processIconData(child))
-        : [];
-
-      return {
-        ...processedCategory,
-        children,
-      };
-    });
-  };
-
   // Function to fetch categories with optional filters
   const fetchCategories = async () => {
     setLoading(true);
@@ -278,16 +251,13 @@ const Categories = () => {
         orderDirection: "desc",
       };
 
-      // Use the new method that fetches categories with listing counts
-      const data = await categoryService.getCategoriesWithListingCounts(
-        filters
-      );
+      const data = await categoryService.getCategories(filters);
 
       // Transform the data using the processIconData helper
       const transformedData = data.map((category) => processIconData(category));
 
       setCategories(transformedData);
-      console.log("Categories loaded with listing counts:", transformedData);
+      console.log("Categories loaded:", transformedData);
     } catch (error) {
       console.error("Error fetching categories:", error);
       toast.error(
@@ -481,14 +451,9 @@ const Categories = () => {
           return;
         }
 
-        // Refresh categories to get updated listing counts
-        fetchCategories();
-
-        // Also refresh tree view if needed
-        if (viewMode === "tree") {
-          fetchCategoryTree();
-        }
-
+        // Process the returned category to extract icon data
+        const processedCategory = processIconData(newCategory);
+        setCategories([processedCategory, ...categories]);
         toast.success("Category added successfully");
       } else if (modalMode === "edit" && currentCategory) {
         const updatedCategory = await categoryService.updateCategory(
@@ -554,8 +519,10 @@ const Categories = () => {
       setLoading(true);
       await categoryService.deleteCategory(categoryId);
 
-      // Refresh categories to get updated listing counts
-      fetchCategories();
+      // Remove the category from the state
+      setCategories(
+        categories.filter((category) => category.id !== categoryId)
+      );
 
       // If we're in tree view, refresh the tree
       if (viewMode === "tree") {

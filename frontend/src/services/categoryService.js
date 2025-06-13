@@ -299,36 +299,6 @@ class CategoryService extends BaseService {
   }
 
   /**
-   * Get categories with their listing counts
-   * @param {Object} filters - Filter options
-   * @returns {Promise<Array>} Array of categories with listing counts
-   */
-  async getCategoriesWithListingCounts(filters = {}) {
-    try {
-      console.log("Fetching categories with listing counts");
-
-      // First, get the categories
-      const categories = await this.getCategories(filters);
-
-      // Use utility function to fetch listing counts
-      const { fetchListingCountsForCategories } = await import(
-        "../utils/categoryUtils"
-      );
-      const categoriesWithCounts = await fetchListingCountsForCategories(
-        categories
-      );
-
-      console.log(
-        `Successfully fetched ${categoriesWithCounts.length} categories with listing counts`
-      );
-      return categoriesWithCounts;
-    } catch (error) {
-      console.error("Error fetching categories with listing counts:", error);
-      throw error;
-    }
-  }
-
-  /**
    * Get categories formatted for dropdown/select components
    * @returns {Promise<Array>} Array of categories with label/value format
    */
