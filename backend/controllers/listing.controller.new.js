@@ -39,6 +39,9 @@ exports.getListings = async (req, res) => {
         *,
         category:category_id(*)
       `);
+
+    // Filter to only include user listings (exclude admin listings)
+    query = query.eq("owner_type", "user");
     // console.log("query", query);
 
     // Apply filters if provided
@@ -118,10 +121,11 @@ exports.getListings = async (req, res) => {
       query = query.offset(parseInt(offset));
     }
 
-    // Get count for pagination
+    // Get count for pagination (only user listings)
     const { count, error: countError } = await supabase
       .from("listings")
-      .select("*", { count: "exact", head: true });
+      .select("*", { count: "exact", head: true })
+      .eq("owner_type", "user");
 
     if (countError) {
       throw new Error(countError.message);
@@ -559,7 +563,8 @@ exports.getListingsByVendor = async (req, res) => {
         category:category_id(*)
       `
       )
-      .eq("user_id", req.params.userId)
+      .eq("owner_id", req.params.userId)
+      .eq("owner_type", "user")
       .eq("status", "active")
       .order("created_at", { ascending: false });
 
@@ -598,6 +603,7 @@ exports.getListingsByCategory = async (req, res) => {
       )
       .eq("category_id", req.params.categoryId)
       .eq("status", "active")
+      .eq("owner_type", "user")
       .order("created_at", { ascending: false });
 
     if (error) {
