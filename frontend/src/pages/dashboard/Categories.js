@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { toast } from "react-hot-toast";
 import categoryService from "../../services/categoryService";
+import categoryCountManager from "../../utils/categoryCountManager";
 import {
   RiAddLine,
   RiEdit2Line,
@@ -122,6 +123,61 @@ const Categories = () => {
       fetchCategoryTree();
     }
   }, [searchTerm, viewMode]);
+
+  // Effect to listen for category count updates
+  useEffect(() => {
+    const unsubscribe = categoryCountManager.onRefreshNeeded(
+      (updatedCounts, categoryIds, fullRefresh) => {
+        if (fullRefresh) {
+          // Full refresh requested
+          console.log("🔄 Full category refresh requested");
+          fetchCategories();
+          if (viewMode === "tree") {
+            fetchCategoryTree();
+          }
+        } else if (updatedCounts && categoryIds) {
+          // Partial refresh - update specific categories
+          console.log("🔄 Updating specific category counts:", updatedCounts);
+
+          setCategories((prevCategories) =>
+            prevCategories.map((category) => {
+              if (categoryIds.includes(category.id)) {
+                return {
+                  ...category,
+                  listingsCount: updatedCounts[category.id] || 0,
+                };
+              }
+              return category;
+            })
+          );
+
+          // Also update tree view if active
+          if (viewMode === "tree") {
+            setCategoryTree((prevTree) =>
+              updateTreeCounts(prevTree, updatedCounts)
+            );
+          }
+        }
+      }
+    );
+
+    // Cleanup subscription on unmount
+    return unsubscribe;
+  }, [viewMode]);
+
+  // Helper function to update counts in tree structure
+  const updateTreeCounts = (tree, updatedCounts) => {
+    return tree.map((category) => ({
+      ...category,
+      listingsCount:
+        updatedCounts[category.id] !== undefined
+          ? updatedCounts[category.id]
+          : category.listingsCount,
+      children: category.children
+        ? updateTreeCounts(category.children, updatedCounts)
+        : category.children,
+    }));
+  };
 
   // Render a single category in the tree view
   const renderCategoryNode = (category) => {
@@ -301,9 +357,10 @@ const Categories = () => {
 
       setCategories(categoriesWithCounts);
       console.log(
-        "Categories loaded with listing counts:",
+        "🎯 Categories loaded with listing counts:",
         categoriesWithCounts
       );
+      console.log("📊 Sample category with count:", categoriesWithCounts[0]);
     } catch (error) {
       console.error("Error fetching categories:", error);
       toast.error(
