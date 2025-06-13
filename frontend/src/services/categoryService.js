@@ -1,6 +1,5 @@
 import BaseService from "./baseService";
 import apiClient from "../utils/apiClient";
-import listingService from "./listingService";
 
 // Table name for categories
 const CATEGORY_TABLE = "categories";
@@ -359,52 +358,6 @@ class CategoryService extends BaseService {
       return formattedHierarchy;
     } catch (error) {
       console.error("Error fetching category hierarchy for dropdown:", error);
-      throw error;
-    }
-  }
-
-  /**
-   * Get categories with listing counts
-   * @param {Object} filters - Filter criteria
-   * @returns {Promise<Array>} Array of categories with listingsCount field
-   */
-  async getCategoriesWithListingCounts(filters = {}) {
-    try {
-      console.log("Fetching categories with listing counts...");
-
-      // First, get all categories
-      const categories = await this.getCategories(filters);
-
-      // Then, fetch listing count for each category
-      const categoriesWithCounts = await Promise.all(
-        categories.map(async (category) => {
-          try {
-            const listingsCount = await listingService.countListingsByCategory(
-              category.id
-            );
-            return {
-              ...category,
-              listingsCount,
-            };
-          } catch (error) {
-            console.error(
-              `Error fetching listing count for category ${category.id}:`,
-              error
-            );
-            return {
-              ...category,
-              listingsCount: 0,
-            };
-          }
-        })
-      );
-
-      console.log(
-        `Successfully fetched ${categoriesWithCounts.length} categories with listing counts`
-      );
-      return categoriesWithCounts;
-    } catch (error) {
-      console.error("Error fetching categories with listing counts:", error);
       throw error;
     }
   }

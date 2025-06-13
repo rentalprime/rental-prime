@@ -398,69 +398,15 @@ class ListingService extends BaseService {
    */
   async countListingsByCategory(categoryId) {
     try {
-      console.log(`Fetching listing count for category: ${categoryId}`);
-
-      const response = await apiClient.get(
-        `/api/listings/category/${categoryId}`
-      );
-
-      if (response.error) {
-        throw new Error(response.error.message);
-      }
-
-      const count = response.count || 0;
-      console.log(
-        `Successfully fetched ${count} listings for category: ${categoryId}`
-      );
-      return count;
-    } catch (error) {
-      console.error(
-        `Error counting listings for category ${categoryId}:`,
-        error
+      // This method would need to be implemented via API
+      // For now, return 0 as a placeholder
+      console.warn(
+        `countListingsByCategory not implemented via API yet for category: ${categoryId}`
       );
       return 0;
-    }
-  }
-
-  /**
-   * Get listings by category ID
-   * @param {string} categoryId - Category ID
-   * @returns {Promise<Object>} Listings data with count
-   */
-  async getListingsByCategory(categoryId) {
-    try {
-      console.log(`Fetching listings for category: ${categoryId}`);
-
-      const response = await apiClient.get(
-        `/api/listings/category/${categoryId}`
-      );
-
-      if (response.error) {
-        throw new Error(response.error.message);
-      }
-
-      const data = response.data || [];
-      const count = response.count || 0;
-
-      console.log(
-        `Successfully fetched ${count} listings for category: ${categoryId}`
-      );
-      return {
-        data,
-        count,
-        success: true,
-      };
     } catch (error) {
-      console.error(
-        `Error fetching listings for category ${categoryId}:`,
-        error
-      );
-      return {
-        data: [],
-        count: 0,
-        success: false,
-        error: error.message || "Network error",
-      };
+      console.error("Error counting listings by category:", error);
+      return 0;
     }
   }
 }
