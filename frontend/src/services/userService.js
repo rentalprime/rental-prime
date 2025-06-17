@@ -25,7 +25,6 @@ class UserService extends BaseService {
       );
       return response.data.data || response.data;
     } catch (error) {
-      console.error("Error fetching users with filters:", error);
       throw error;
     }
   }
@@ -36,7 +35,6 @@ class UserService extends BaseService {
       const response = await apiClient.get("/api/roles");
       return response.data.data || response.data;
     } catch (error) {
-      console.error("Error fetching active roles:", error);
       throw error;
     }
   }
@@ -44,14 +42,10 @@ class UserService extends BaseService {
   // Create a new user
   async create(userData) {
     try {
-      console.log("Creating user with data:", userData);
-
       const response = await apiClient.post(this.baseUrl, userData);
 
-      console.log("Create result:", response.data);
       return response.data.data || response.data;
     } catch (error) {
-      console.error(`Error creating user:`, error);
       throw error;
     }
   }
@@ -59,15 +53,10 @@ class UserService extends BaseService {
   // Update a user
   async update(id, updates) {
     try {
-      console.log("Updating user with ID:", id);
-      console.log("Update data:", updates);
-
       const response = await apiClient.put(`${this.baseUrl}/${id}`, updates);
 
-      console.log("Update result:", response.data);
       return response.data.data || response.data;
     } catch (error) {
-      console.error(`Error updating user:`, error);
       throw error;
     }
   }

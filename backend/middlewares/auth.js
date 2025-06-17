@@ -1,4 +1,6 @@
-const supabase = require("../config/supabase");
+const db = require("../config/database");
+const jwt = require("jsonwebtoken");
+const config = require("../config/config");
 
 /**
  * Enhanced Authentication & Authorization Middleware
@@ -29,69 +31,70 @@ exports.protect = async (req, res, next) => {
   }
 
   try {
-    // Verify token with Supabase
-    const {
-      data: { user },
-      error,
-    } = await supabase.auth.getUser(token);
+    // Verify JWT token
+    const decoded = jwt.verify(token, config.jwtSecret);
+    const userId = decoded.id;
 
-    if (error || !user) {
+    // Try to get user data from admin_users table first (for admin users)
+    const adminUserQuery = await db.query(
+      `SELECT au.*, r.id as role_id, r.name as role_name, r.description as role_description, r.permissions as role_permissions
+       FROM admin_users au
+       LEFT JOIN roles r ON au.role_id = r.id
+       WHERE au.id = $1`,
+      [userId]
+    );
+
+    let userData = null;
+    let userTable = null;
+
+    if (adminUserQuery.rows.length > 0) {
+      userData = adminUserQuery.rows[0];
+      userTable = "admin_users";
+    } else {
+      // Try users table (for vendors and customers)
+      const userQuery = await db.query(
+        `SELECT u.*, r.id as role_id, r.name as role_name, r.description as role_description, r.permissions as role_permissions
+         FROM users u
+         LEFT JOIN roles r ON u.role_id = r.id
+         WHERE u.id = $1`,
+        [userId]
+      );
+
+      if (userQuery.rows.length > 0) {
+        userData = userQuery.rows[0];
+        userTable = "users";
+      }
+    }
+
+    if (!userData) {
       return res.status(401).json({
         success: false,
-        message: "Invalid token. Please login again.",
+        message: "User not found in system",
       });
     }
 
-    // Try to get user data from admin_users table first (for admin users)
-    const { data: adminData, error: adminError } = await supabase
-      .from("admin_users")
-      .select(
-        `
-        *,
-        roles (
-          id,
-          name,
-          description,
-          permissions
-        )
-      `
-      )
-      .eq("id", user.id)
-      .single();
+    // Format user data with role information
+    const formattedUser = {
+      ...userData,
+      roles: userData.role_id
+        ? {
+            id: userData.role_id,
+            name: userData.role_name,
+            description: userData.role_description,
+            permissions: userData.role_permissions,
+          }
+        : null,
+    };
 
-    if (!adminError && adminData) {
-      // User found in admin_users table
-      req.user = adminData;
-      req.userTable = "admin_users";
-    } else {
-      // Try users table (for vendors and customers)
-      const { data: userData, error: userError } = await supabase
-        .from("users")
-        .select(
-          `
-          *,
-          roles (
-            id,
-            name,
-            description,
-            permissions
-          )
-        `
-        )
-        .eq("id", user.id)
-        .single();
+    // Remove sensitive data
+    delete formattedUser.password;
+    delete formattedUser.role_id;
+    delete formattedUser.role_name;
+    delete formattedUser.role_description;
+    delete formattedUser.role_permissions;
 
-      if (userError || !userData) {
-        return res.status(401).json({
-          success: false,
-          message: "User not found in system",
-        });
-      }
-
-      req.user = userData;
-      req.userTable = "users";
-    }
-
+    req.user = formattedUser;
+    req.userTable = userTable;
     req.token = token;
 
     next();

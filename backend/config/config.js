@@ -3,15 +3,20 @@
  */
 
 module.exports = {
-  // Supabase configuration
-  supabaseUrl:
-    process.env.SUPABASE_URL || "https://vmwjqwgvzmwjomcehabe.supabase.co",
-  // supabaseKey:
-  //   process.env.SUPABASE_ANON_KEY ||
-  //   "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZtd2pxd2d2em13am9tY2VoYWJlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDc4OTgyODYsImV4cCI6MjA2MzQ3NDI4Nn0.pxO8lrc8z6ByVJ-7bKny7LjRfmCHD4iMcbM1NbaMS8U",
-  supabaseKey:
-    process.env.SUPABASE_SERVICE_ROLE ||
-    "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZtd2pxd2d2em13am9tY2VoYWJlIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc0Nzg5ODI4NiwiZXhwIjoyMDYzNDc0Mjg2fQ.H1YMO_Tye6ikWth7csEwPMWI3CxYcQaQ6N6oNXwf-0c",
+  // PostgreSQL Database configuration
+  database: {
+    host:
+      process.env.DB_HOST ||
+      "dpg-d16gpcvdiees73d4e9sg-a.oregon-postgres.render.com",
+    port: parseInt(process.env.DB_PORT) || 5432,
+    database: process.env.DB_NAME || "rental_prime_database_render",
+    user: process.env.DB_USER || "rental_prime_database_render_user",
+    password: process.env.DB_PASSWORD || "i5j3fvDOteNEAVxBceqO4690aRcg5hA5",
+    ssl: { rejectUnauthorized: false }, // Always use SSL for Render
+    max: 20, // Maximum number of clients in the pool
+    idleTimeoutMillis: 30000, // How long a client is allowed to remain idle
+    connectionTimeoutMillis: 10000, // How long to wait when connecting
+  },
 
   // JWT configuration
   jwtSecret: process.env.JWT_SECRET || "rental-prima-super-secret-jwt-key",

@@ -1,73 +1,101 @@
-const supabase = require("../config/supabase");
+const db = require("../config/database");
+const bcrypt = require("bcryptjs");
+const jwt = require("jsonwebtoken");
+const config = require("../config/config");
+const { v4: uuidv4 } = require("uuid");
 
-// @desc    Register user
+// Helper function to generate JWT token
+const generateToken = (userData, userTable = "users") => {
+  const payload = {
+    id: userData.id || userData,
+    user_type: userData.user_type,
+    email: userData.email,
+    userTable: userTable,
+    role_id: userData.role_id,
+  };
+
+  // If only userId is passed (backward compatibility)
+  if (typeof userData === "string") {
+    payload.id = userData;
+    // Remove undefined fields for backward compatibility
+    delete payload.user_type;
+    delete payload.email;
+    delete payload.userTable;
+    delete payload.role_id;
+  }
+
+  return jwt.sign(payload, config.jwtSecret, {
+    expiresIn: config.jwtExpire,
+  });
+};
+
+// @desc    Register super admin user only
 // @route   POST /api/auth/register
 // @access  Public
 exports.register = async (req, res) => {
   try {
-    const { name, email, password, user_type } = req.body;
-    // Check if user already exists in Supabase Auth
-    const { data: existingUsers, error: checkError } = await supabase
-      .from("users")
-      .select("email")
-      .eq("email", email)
-      .limit(1);
+    const { name, email, password } = req.body;
 
-    if (checkError) {
-      throw new Error(checkError.message);
-    }
-
-    if (existingUsers && existingUsers.length > 0) {
+    // Validate required fields
+    if (!name || !email || !password) {
       return res.status(400).json({
         success: false,
-        message: "User already exists",
+        message: "Please provide name, email, and password",
       });
     }
-    // Create user in Supabase Auth
-    const { data: authData, error: authError } = await supabase.auth.signUp({
+
+    // Check if super admin already exists in admin_users table
+    const existingAdmin = await db.query(
+      "SELECT email FROM admin_users WHERE email = $1 LIMIT 1",
+      [email]
+    );
+
+    if (existingAdmin.rows.length > 0) {
+      return res.status(400).json({
+        success: false,
+        message: "Super admin with this email already exists",
+      });
+    }
+
+    // Hash password
+    const saltRounds = 12;
+    const hashedPassword = await bcrypt.hash(password, saltRounds);
+
+    // Generate UUID for user
+    const userId = uuidv4();
+
+    // Get super_admin role
+    const roleQuery = await db.query(
+      "SELECT id FROM roles WHERE name = 'super_admin' LIMIT 1"
+    );
+    const roleId = roleQuery.rows[0]?.id || null;
+
+    if (!roleId) {
+      throw new Error("Super admin role not found in database");
+    }
+
+    // Create super admin user profile in admin_users table
+    const userData = await db.insert("admin_users", {
+      id: userId,
       email,
-      password,
+      name,
+      password: hashedPassword,
+      user_type: "super_admin",
+      role_id: roleId,
+      status: "active",
     });
 
-    if (authError) {
-      throw new Error(authError.message);
+    if (!userData) {
+      throw new Error("Failed to create super admin user");
     }
 
-    // Create user profile in users table
-    const { data: userData, error: userError } = await supabase
-      .from("users")
-      .insert([
-        {
-          id: authData.user.id,
-          email,
-          first_name: name, // Store full name in first_name field
-          last_name: " ", // Use space as placeholder for last_name
-          // Map user types to allowed database roles
-          // 'admin' role in DB can represent both super admin and owner users
-          // 'customer' role in DB represents regular customers
-          role:
-            user_type === "super_admin" || user_type === "owner"
-              ? "admin"
-              : "customer",
-          // Store the specific user type in the username field as a prefix
-          username: `${user_type || "customer"}_${email.split("@")[0]}`,
-          status: "active",
-          created_at: new Date().toISOString(),
-        },
-      ])
-      .select();
-
-    if (userError) {
-      throw new Error(userError.message);
-    }
-
-    // Return user data and session
+    // Return super admin user data
     res.status(201).json({
       success: true,
       data: {
-        user: userData[0],
-        session: authData.session,
+        user: userData,
       },
+      message: "Super admin account created successfully",
     });
   } catch (error) {
     res.status(500).json({
@@ -93,89 +121,99 @@ exports.login = async (req, res) => {
       });
     }
 
-    // Authenticate with Supabase Auth
-    const { data: authData, error: authError } =
-      await supabase.auth.signInWithPassword({
-        email,
-        password,
-      });
+    // Try to get user profile data from admin_users table first
+    const adminUserQuery = await db.query(
+      `SELECT au.*, r.id as role_id, r.name as role_name, r.description as role_description, r.permissions as role_permissions
+       FROM admin_users au
+       LEFT JOIN roles r ON au.role_id = r.id
+       WHERE au.email = $1`,
+      [email]
+    );
 
-    if (authError) {
+    let userData = null;
+    let userTable = null;
+
+    if (adminUserQuery.rows.length > 0) {
+      userData = adminUserQuery.rows[0];
+      userTable = "admin_users";
+    } else {
+      // If not found in admin_users, try the regular users table
+      const userQuery = await db.query(
+        `SELECT u.*, r.id as role_id, r.name as role_name, r.description as role_description, r.permissions as role_permissions
+         FROM users u
+         LEFT JOIN roles r ON u.role_id = r.id
+         WHERE u.email = $1`,
+        [email]
+      );
+
+      if (userQuery.rows.length > 0) {
+        userData = userQuery.rows[0];
+        userTable = "users";
+      }
+    }
+
+    if (!userData) {
       return res.status(401).json({
         success: false,
         message: "Invalid credentials",
-        error: authError.message,
       });
     }
 
-    if (!authData.user) {
+    // Check password
+    const isPasswordValid = await bcrypt.compare(password, userData.password);
+    if (!isPasswordValid) {
       return res.status(401).json({
         success: false,
-        message: "Authentication failed",
+        message: "Invalid credentials",
       });
     }
 
-    // Try to get user profile data from admin_users table first
-    const { data: adminUserData, error: adminUserError } = await supabase
-      .from("admin_users")
-      .select(
-        `
-        *,
-        roles (
-          id,
-          name,
-          description,
-          permissions
-        )
-      `
-      )
-      .eq("id", authData.user.id)
-      .single();
-
-    if (!adminUserError && adminUserData) {
-      // User found in admin_users table
-      return res.status(200).json({
-        success: true,
-        data: {
-          user: adminUserData,
-          session: authData.session,
-          userTable: "admin_users",
-        },
-      });
-    }
-
-    // If not found in admin_users, try the regular users table
-    const { data: userData, error: userError } = await supabase
-      .from("users")
-      .select(
-        `
-        *,
-        roles (
-          id,
-          name,
-          description,
-          permissions
-        )
-      `
-      )
-      .eq("id", authData.user.id)
-      .single();
-
-    if (userError || !userData) {
-      return res.status(404).json({
+    // Check if user is active
+    if (userData.status !== "active") {
+      return res.status(401).json({
         success: false,
-        message: "User profile not found in system",
-        error: userError?.message,
+        message: "Account is not active",
       });
     }
 
-    // User found in users table
+    // Generate JWT token with complete user data
+    const tokenUserData = {
+      id: userData.id,
+      user_type: userData.user_type,
+      email: userData.email,
+      role_id: userData.role_id,
+    };
+    const token = generateToken(tokenUserData, userTable);
+
+    // Format user data with role information
+    const formattedUser = {
+      ...userData,
+      roles: userData.role_id
+        ? {
+            id: userData.role_id,
+            name: userData.role_name,
+            description: userData.role_description,
+            permissions: userData.role_permissions,
+          }
+        : null,
+    };
+
+    // Remove sensitive data
+    delete formattedUser.password;
+    delete formattedUser.role_id;
+    delete formattedUser.role_name;
+    delete formattedUser.role_description;
+    delete formattedUser.role_permissions;
+
     return res.status(200).json({
       success: true,
       data: {
-        user: userData,
-        session: authData.session,
-        userTable: "users",
+        user: formattedUser,
+        session: {
+          access_token: token,
+          user: { id: userData.id, email: userData.email },
+        },
+        userTable,
       },
     });
   } catch (error) {
@@ -203,76 +241,82 @@ exports.getMe = async (req, res) => {
       });
     }
 
-    // Verify the token with Supabase
-    const {
-      data: { user },
-      error,
-    } = await supabase.auth.getUser(token);
-
-    if (error || !user) {
+    // Verify the JWT token
+    let decoded;
+    try {
+      decoded = jwt.verify(token, config.jwtSecret);
+    } catch (jwtError) {
       return res.status(401).json({
         success: false,
-        message: "Not authorized to access this route",
-        error: error?.message,
+        message: "Invalid token",
+        error: jwtError.message,
       });
     }
+
+    const userId = decoded.id;
 
     // Try to get user profile data from admin_users table first
-    const { data: adminUserData, error: adminUserError } = await supabase
-      .from("admin_users")
-      .select(
-        `
-        *,
-        roles (
-          id,
-          name,
-          description,
-          permissions
-        )
-      `
-      )
-      .eq("id", user.id)
-      .single();
+    const adminUserQuery = await db.query(
+      `SELECT au.*, r.id as role_id, r.name as role_name, r.description as role_description, r.permissions as role_permissions
+       FROM admin_users au
+       LEFT JOIN roles r ON au.role_id = r.id
+       WHERE au.id = $1`,
+      [userId]
+    );
 
-    if (!adminUserError && adminUserData) {
-      // User found in admin_users table
-      return res.status(200).json({
-        success: true,
-        data: adminUserData,
-        userTable: "admin_users",
-      });
+    let userData = null;
+    let userTable = null;
+
+    if (adminUserQuery.rows.length > 0) {
+      userData = adminUserQuery.rows[0];
+      userTable = "admin_users";
+    } else {
+      // If not found in admin_users, try the regular users table
+      const userQuery = await db.query(
+        `SELECT u.*, r.id as role_id, r.name as role_name, r.description as role_description, r.permissions as role_permissions
+         FROM users u
+         LEFT JOIN roles r ON u.role_id = r.id
+         WHERE u.id = $1`,
+        [userId]
+      );
+
+      if (userQuery.rows.length > 0) {
+        userData = userQuery.rows[0];
+        userTable = "users";
+      }
     }
 
-    // If not found in admin_users, try the regular users table
-    const { data: userData, error: userError } = await supabase
-      .from("users")
-      .select(
-        `
-        *,
-        roles (
-          id,
-          name,
-          description,
-          permissions
-        )
-      `
-      )
-      .eq("id", user.id)
-      .single();
-
-    if (userError || !userData) {
+    if (!userData) {
       return res.status(404).json({
         success: false,
         message: "User profile not found in system",
-        error: userError?.message,
       });
     }
 
-    // User found in users table
+    // Format user data with role information
+    const formattedUser = {
+      ...userData,
+      roles: userData.role_id
+        ? {
+            id: userData.role_id,
+            name: userData.role_name,
+            description: userData.role_description,
+            permissions: userData.role_permissions,
+          }
+        : null,
+    };
+
+    // Remove sensitive data
+    delete formattedUser.password;
+    delete formattedUser.role_id;
+    delete formattedUser.role_name;
+    delete formattedUser.role_description;
+    delete formattedUser.role_permissions;
+
     res.status(200).json({
       success: true,
-      data: userData,
-      userTable: "users",
+      data: formattedUser,
+      userTable,
     });
   } catch (error) {
     console.error("GetMe error:", error);
@@ -287,20 +331,8 @@ exports.getMe = async (req, res) => {
 // @desc    Log user out / clear cookie
 // @route   GET /api/auth/logout
 // @access  Private
-exports.logout = async (req, res) => {
+exports.logout = async (_req, res) => {
   try {
-    // Get the JWT from the authorization header
-    const token = req.headers.authorization?.split(" ")[1];
-
-    if (token) {
-      // Sign out from Supabase
-      const { error } = await supabase.auth.signOut();
-
-      if (error) {
-        throw new Error(error.message);
-      }
-    }
-
     // Clear any cookies
     res.cookie("token", "none", {
       expires: new Date(Date.now() + 10 * 1000),

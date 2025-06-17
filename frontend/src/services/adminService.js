@@ -12,14 +12,11 @@ class AdminService extends BaseService {
    */
   async getAllAdmins() {
     try {
-      console.log("Fetching all admin users from API");
       const response = await apiClient.get(this.baseUrl);
       const data = response.data || response;
 
-      console.log("Successfully fetched admin users:", data);
       return data || [];
     } catch (error) {
-      console.error("Error fetching admin users:", error);
       throw error;
     }
   }
@@ -65,11 +62,7 @@ class AdminService extends BaseService {
    */
   async createAdmin(adminData) {
     try {
-      console.log("Creating admin user with data:", adminData);
-
       const response = await apiClient.post(this.baseUrl, adminData);
-
-      console.log("Create admin result:", response.data);
 
       // Handle the response format from backend
       if (response.success && response.data) {
@@ -91,11 +84,7 @@ class AdminService extends BaseService {
    */
   async updateAdmin(id, updates) {
     try {
-      console.log("Updating admin user:", id, "with data:", updates);
-
       const response = await apiClient.put(`${this.baseUrl}/${id}`, updates);
-
-      console.log("Update admin result:", response.data);
 
       // Handle the response format from backend
       if (response.success && response.data) {
@@ -116,11 +105,8 @@ class AdminService extends BaseService {
    */
   async deleteAdmin(id) {
     try {
-      console.log("Deleting admin user:", id);
-
       await apiClient.delete(`${this.baseUrl}/${id}`);
 
-      console.log("Admin user deleted successfully");
       return true;
     } catch (error) {
       console.error("Error deleting admin user:", error);
@@ -135,11 +121,8 @@ class AdminService extends BaseService {
    */
   async getAdminById(id) {
     try {
-      console.log("Fetching admin user by ID:", id);
-
       const response = await apiClient.get(`${this.baseUrl}/${id}`);
 
-      console.log("Fetched admin user:", response.data);
       return response.data || response;
     } catch (error) {
       console.error("Error fetching admin user by ID:", error);

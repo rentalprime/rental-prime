@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from "react";
 import { toast } from "react-hot-toast";
 import userService from "../../services/userService";
 import roleService from "../../services/roleService";
+import useDebounce from "../../hooks/useDebounce";
 import {
   RiUserAddLine,
   RiEdit2Line,
@@ -30,6 +31,9 @@ const UserManagement = () => {
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
 
+  // Debounced search term to prevent excessive API calls
+  const debouncedSearchTerm = useDebounce(searchTerm, 500);
+
   // Define fetchUsers and fetchRoles functions outside useEffect
   const fetchUsers = useCallback(async () => {
     try {
@@ -38,12 +42,11 @@ const UserManagement = () => {
       if (statusFilter !== "all") {
         filters.status = statusFilter;
       }
-      if (searchTerm) {
-        filters.search = searchTerm;
+      if (debouncedSearchTerm) {
+        filters.search = debouncedSearchTerm;
       }
 
       const userData = await userService.getUsers(filters);
-      console.log("Fetched users:", userData);
 
       // No need for mapping anymore
       setUsers(userData);
@@ -53,13 +56,12 @@ const UserManagement = () => {
     } finally {
       setLoading(false);
     }
-  }, [statusFilter, searchTerm]);
+  }, [statusFilter, debouncedSearchTerm]);
 
   const fetchRoles = useCallback(async () => {
     try {
       // Use roleService instead of direct Supabase calls
       const rolesData = await roleService.getAllRoles();
-      console.log("Fetched roles:", rolesData);
       setRoles(rolesData);
     } catch (error) {
       console.error("Error fetching roles:", error);
@@ -95,11 +97,6 @@ const UserManagement = () => {
         // If we find a matching role, update the role_id as well
         ...(matchingRole && { role_id: matchingRole.id }),
       });
-
-      console.log(
-        `Changed user_type to ${value}, matching role:`,
-        matchingRole
-      );
     } else {
       setFormData({
         ...formData,
@@ -117,9 +114,6 @@ const UserManagement = () => {
       // Find the default vendor role ID (since default user_type is vendor)
       const vendorRole = roles.find((role) => role.name === "vendor");
 
-      console.log("Available roles:", roles);
-      console.log("Found vendor role:", vendorRole);
-
       const formDataToSet = {
         name: "",
         email: "",
@@ -130,11 +124,6 @@ const UserManagement = () => {
       };
 
       setFormData(formDataToSet);
-
-      console.log(
-        "Initialized form data with role_id:",
-        vendorRole ? vendorRole.id : ""
-      );
     };
 
     // Initialize form immediately
@@ -155,7 +144,6 @@ const UserManagement = () => {
 
   // Open modal for editing a user
   const openEditModal = (user) => {
-    console.log("Opening edit modal for user:", user);
     setModalMode("edit");
     setCurrentUser(user);
 
@@ -170,8 +158,6 @@ const UserManagement = () => {
     };
 
     setFormData(formDataToSet);
-
-    console.log("Set form data for editing:", formDataToSet);
 
     // Show modal immediately
     setShowModal(true);
@@ -202,7 +188,6 @@ const UserManagement = () => {
           password: formData.password,
         };
 
-        console.log("Creating new user with data:", userData);
         const newUser = await userService.create(userData);
 
         setUsers([newUser, ...users]);
@@ -217,17 +202,12 @@ const UserManagement = () => {
           role_id: formData.role_id,
         };
 
-        console.log("Updating user with ID:", currentUser.id);
-        console.log("Update data:", userData);
-
         // Update user using the service
         await userService.update(currentUser.id, userData);
 
         // Refresh the user list to show the updated data
         await fetchUsers();
         toast.success("User updated successfully");
-
-        console.log("Updated user with type:", formData.user_type);
       }
 
       setShowModal(false);
@@ -255,8 +235,10 @@ const UserManagement = () => {
   };
 
   // Filter users based on search term and status filter
+  // Use original searchTerm for immediate UI feedback, API uses debounced version
   const filteredUsers = users.filter((user) => {
     const matchesSearch =
+      !searchTerm ||
       user.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       user.email.toLowerCase().includes(searchTerm.toLowerCase());
 

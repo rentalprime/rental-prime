@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "react-hot-toast";
 import {
@@ -11,8 +11,9 @@ import {
   RiCloseLine,
 } from "react-icons/ri";
 import listingService from "../../services/listingService";
-
 import categoryService from "../../services/categoryService";
+import eventBus, { EVENTS } from "../../utils/eventBus";
+import useDebounce from "../../hooks/useDebounce";
 
 // API base URL for server requests
 const API_URL = process.env.REACT_APP_API_URL || "http://localhost:5001";
@@ -27,23 +28,18 @@ const PLACEHOLDER_IMAGE =
  * @returns {string} - The complete URL to the image
  */
 const getImageUrl = (path) => {
-  console.log("Processing image path:", path);
-
   // Return placeholder for empty paths
   if (!path) {
-    console.log("Empty path, using placeholder");
     return PLACEHOLDER_IMAGE;
   }
 
   // If it's a base64 data URL, return it as is
   if (path.startsWith("data:")) {
-    console.log("Path is a base64 data URL");
     return path;
   }
 
   // If it's already a full URL, return it as is
   if (path.startsWith("http")) {
-    console.log("Path is already a full URL");
     return path;
   }
 
@@ -55,7 +51,6 @@ const getImageUrl = (path) => {
 
   // Combine to form the full URL
   const fullUrl = `${baseUrl}${imagePath}`;
-  console.log("Converted to full URL:", fullUrl);
 
   return fullUrl;
 };
@@ -66,7 +61,7 @@ const Listings = () => {
   // All states declared at the top
   const [listings, setListings] = useState([]);
   const [totalCount, setTotalCount] = useState(0);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("all");
   const [subcategoryFilter, setSubcategoryFilter] = useState("all");
@@ -202,8 +197,6 @@ const Listings = () => {
   };
 
   const openViewModal = (listing) => {
-    console.log("Opening view modal with listing:", listing);
-
     // Process listing to handle JSON strings
     const processedListing = { ...listing };
 
@@ -239,7 +232,6 @@ const Listings = () => {
       processedListing.specifications = [];
     }
 
-    console.log("Processed listing images:", processedListing.images);
     setViewListing(processedListing);
     setShowViewModal(true);
   };
@@ -283,8 +275,6 @@ const Listings = () => {
         }
       }
 
-      console.log("Submitting form data:", preparedData);
-
       if (modalMode === "add") {
         // Create new listing
         const result = await listingService.createListing(preparedData);
@@ -292,6 +282,9 @@ const Listings = () => {
           toast.success("Listing created successfully");
           setShowModal(false);
           fetchListings();
+
+          // Emit event to refresh dashboard
+          eventBus.emit(EVENTS.LISTING_CREATED, result);
         }
       } else if (modalMode === "edit") {
         // Update existing listing
@@ -303,6 +296,9 @@ const Listings = () => {
           toast.success("Listing updated successfully");
           setShowModal(false);
           fetchListings();
+
+          // Emit event to refresh dashboard
+          eventBus.emit(EVENTS.LISTING_UPDATED, result);
         }
       }
     } catch (error) {
@@ -337,6 +333,9 @@ const Listings = () => {
         // Update the UI
         setListings(listings.filter((listing) => listing.id !== listingId));
         toast.success("Listing deleted successfully");
+
+        // Emit event to refresh dashboard
+        eventBus.emit(EVENTS.LISTING_DELETED, { id: listingId });
       } catch (error) {
         console.error("Error deleting listing:", error);
         toast.error(`Failed to delete listing: ${error.message}`);
@@ -346,9 +345,11 @@ const Listings = () => {
     }
   };
 
+  // Debounced search term to prevent excessive API calls
+  const debouncedSearchTerm = useDebounce(searchTerm, 500);
+
   // Fetch categories on mount
   useEffect(() => {
-    // Fetch categories function moved to before useEffect
     fetchCategories();
   }, []);
 
@@ -373,12 +374,11 @@ const Listings = () => {
     fetchSubcategories();
   }, [categoryFilter]);
 
-  // Fetch listings when filters change
+  // Fetch listings when filters change (using debounced search term)
   useEffect(() => {
-    // Fetch listings function moved to before useEffect
     fetchListings();
   }, [
-    searchTerm,
+    debouncedSearchTerm,
     categoryFilter,
     subcategoryFilter,
     statusFilter,
@@ -419,7 +419,7 @@ const Listings = () => {
     setLoading(true);
     try {
       const filters = {
-        search: searchTerm,
+        search: debouncedSearchTerm,
         category: categoryFilter !== "all" ? categoryFilter : undefined,
         subcategory:
           subcategoryFilter !== "all" ? subcategoryFilter : undefined,
@@ -432,11 +432,9 @@ const Listings = () => {
         orderBy: "created_at",
         orderDirection: "desc",
       };
-      console.log("Fetching listings with filters:", filters);
 
       // Use the listing service to fetch data
       const response = await listingService.getListings(filters);
-      console.log("API response:", response);
 
       // Check if we have a valid response with data
       if (response && response.data && Array.isArray(response.data)) {
@@ -484,7 +482,6 @@ const Listings = () => {
         });
 
         setListings(processedListings);
-        console.log("Processed listings:", processedListings);
 
         // Use the count from the API response for pagination
         const totalItems = response.count || listingsData.length;
@@ -510,26 +507,6 @@ const Listings = () => {
       setLoading(false);
     }
   };
-
-  // Effect to fetch categories and listings on component mount and when filters change
-  useEffect(() => {
-    fetchCategories();
-    fetchListings();
-  }, [
-    page,
-    pageSize,
-    searchTerm,
-    categoryFilter,
-    subcategoryFilter,
-    statusFilter,
-    isFeaturedFilter,
-    priceFilter,
-  ]);
-
-  // Effect to fetch subcategories when category changes
-  useEffect(() => {
-    fetchSubcategories();
-  }, [categoryFilter]);
 
   const filteredListings = listings; // You can add client-side filters if needed
 

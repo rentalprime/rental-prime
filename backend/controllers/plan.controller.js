@@ -1,4 +1,5 @@
-const supabase = require("../config/supabase");
+const db = require("../config/database");
+const { v4: uuidv4 } = require("uuid");
 
 // @desc    Get all plans with filters
 // @route   GET /api/plans
@@ -17,54 +18,127 @@ exports.getPlans = async (req, res) => {
       orderDirection = "desc",
     } = req.query;
 
-    // Start building the query
-    let query = supabase.from("plans").select("*");
+    // Build the PostgreSQL query
+    let queryText = "SELECT * FROM plans WHERE 1=1";
+    const conditions = [];
+    const values = [];
+    let paramCount = 0;
 
     // Apply filters if provided
     if (status && status !== "all") {
-      query = query.eq("status", status);
+      paramCount++;
+      conditions.push(`status = $${paramCount}`);
+      values.push(status);
     }
 
     // Interval filter
     if (interval && interval !== "all") {
-      query = query.eq("interval", interval);
+      paramCount++;
+      conditions.push(`interval = $${paramCount}`);
+      values.push(interval);
     }
 
     // Search filter
     if (search) {
-      query = query.or(`name.ilike.%${search}%,description.ilike.%${search}%`);
+      paramCount++;
+      conditions.push(
+        `(name ILIKE $${paramCount} OR description ILIKE $${paramCount})`
+      );
+      values.push(`%${search}%`);
     }
 
     // Price range filters
     if (minPrice) {
-      query = query.gte("price", parseFloat(minPrice));
+      paramCount++;
+      conditions.push(`price >= $${paramCount}`);
+      values.push(parseFloat(minPrice));
     }
     if (maxPrice) {
-      query = query.lte("price", parseFloat(maxPrice));
+      paramCount++;
+      conditions.push(`price <= $${paramCount}`);
+      values.push(parseFloat(maxPrice));
+    }
+
+    // Add conditions to query
+    if (conditions.length > 0) {
+      queryText += ` AND ${conditions.join(" AND ")}`;
     }
 
     // Apply ordering
-    const ascending = orderDirection === "asc";
-    query = query.order(orderBy, { ascending });
+    const validOrderFields = ["created_at", "updated_at", "name", "price"];
+    const orderField = validOrderFields.includes(orderBy)
+      ? orderBy
+      : "created_at";
+    const direction = orderDirection === "asc" ? "ASC" : "DESC";
+    queryText += ` ORDER BY ${orderField} ${direction}`;
 
     // Apply pagination
-    if (limit && offset) {
-      query = query.range(
-        parseInt(offset),
-        parseInt(offset) + parseInt(limit) - 1
+    if (limit) {
+      paramCount++;
+      queryText += ` LIMIT $${paramCount}`;
+      values.push(parseInt(limit));
+    }
+
+    if (offset) {
+      paramCount++;
+      queryText += ` OFFSET $${paramCount}`;
+      values.push(parseInt(offset));
+    }
+
+    // Execute main query
+    const result = await db.query(queryText, values);
+    const plans = result.rows;
+
+    // Get total count for pagination
+    let countQuery = "SELECT COUNT(*) FROM plans WHERE 1=1";
+    const countConditions = [];
+    const countValues = [];
+    let countParamCount = 0;
+
+    // Apply same filters for count
+    if (status && status !== "all") {
+      countParamCount++;
+      countConditions.push(`status = $${countParamCount}`);
+      countValues.push(status);
+    }
+
+    if (interval && interval !== "all") {
+      countParamCount++;
+      countConditions.push(`interval = $${countParamCount}`);
+      countValues.push(interval);
+    }
+
+    if (search) {
+      countParamCount++;
+      countConditions.push(
+        `(name ILIKE $${countParamCount} OR description ILIKE $${countParamCount})`
       );
+      countValues.push(`%${search}%`);
     }
 
-    const { data: plans, error, count } = await query;
-
-    if (error) {
-      throw new Error(error.message);
+    if (minPrice) {
+      countParamCount++;
+      countConditions.push(`price >= $${countParamCount}`);
+      countValues.push(parseFloat(minPrice));
     }
+
+    if (maxPrice) {
+      countParamCount++;
+      countConditions.push(`price <= $${countParamCount}`);
+      countValues.push(parseFloat(maxPrice));
+    }
+
+    if (countConditions.length > 0) {
+      countQuery += ` AND ${countConditions.join(" AND ")}`;
+    }
+
+    const countResult = await db.query(countQuery, countValues);
+    const totalCount = parseInt(countResult.rows[0].count);
 
     res.status(200).json({
       success: true,
       count: plans.length,
-      total: count,
+      total: totalCount,
       data: plans,
     });
   } catch (error) {
@@ -81,13 +155,11 @@ exports.getPlans = async (req, res) => {
 // @access  Public
 exports.getPlan = async (req, res) => {
   try {
-    const { data: plan, error } = await supabase
-      .from("plans")
-      .select("*")
-      .eq("id", req.params.id)
-      .single();
+    const result = await db.query("SELECT * FROM plans WHERE id = $1", [
+      req.params.id,
+    ]);
 
-    if (error) {
+    if (result.rows.length === 0) {
       return res.status(404).json({
         success: false,
         message: `Plan not found with id of ${req.params.id}`,
@@ -96,7 +168,7 @@ exports.getPlan = async (req, res) => {
 
     res.status(200).json({
       success: true,
-      data: plan,
+      data: result.rows[0],
     });
   } catch (error) {
     res.status(500).json({
@@ -146,31 +218,30 @@ exports.createPlan = async (req, res) => {
       });
     }
 
+    // Generate UUID for the plan
+    const planId = uuidv4();
+
     // Prepare plan data
     const planData = {
+      id: planId,
       name: name.trim(),
       description: description ? description.trim() : null,
-      price: parseFloat(price),
+      price: parseFloat(price).toFixed(2),
       interval,
       features: features || null,
       status,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
     };
 
-    const { data: plan, error } = await supabase
-      .from("plans")
-      .insert([planData])
-      .select()
-      .single();
+    // Insert the plan
+    const insertedPlan = await db.insert("plans", planData);
 
-    if (error) {
-      throw new Error(error.message);
+    if (!insertedPlan) {
+      throw new Error("Failed to create plan");
     }
 
     res.status(201).json({
       success: true,
-      data: plan,
+      data: insertedPlan,
     });
   } catch (error) {
     res.status(500).json({
@@ -189,13 +260,12 @@ exports.updatePlan = async (req, res) => {
     const { name, description, price, features, status, interval } = req.body;
 
     // Check if plan exists
-    const { data: existingPlan, error: fetchError } = await supabase
-      .from("plans")
-      .select("*")
-      .eq("id", req.params.id)
-      .single();
+    const existingPlanQuery = await db.query(
+      "SELECT * FROM plans WHERE id = $1",
+      [req.params.id]
+    );
 
-    if (fetchError) {
+    if (existingPlanQuery.rows.length === 0) {
       return res.status(404).json({
         success: false,
         message: `Plan not found with id of ${req.params.id}`,
@@ -230,25 +300,36 @@ exports.updatePlan = async (req, res) => {
     if (name !== undefined) updateData.name = name.trim();
     if (description !== undefined)
       updateData.description = description ? description.trim() : null;
-    if (price !== undefined) updateData.price = parseFloat(price);
+    if (price !== undefined) updateData.price = parseFloat(price).toFixed(2);
     if (features !== undefined) updateData.features = features;
     if (status !== undefined) updateData.status = status;
     if (interval !== undefined) updateData.interval = interval;
 
-    const { data: plan, error } = await supabase
-      .from("plans")
-      .update(updateData)
-      .eq("id", req.params.id)
-      .select()
-      .single();
+    // Remove undefined values and prepare update data
+    const cleanUpdateData = {};
+    Object.keys(updateData).forEach((key) => {
+      if (updateData[key] !== undefined) {
+        cleanUpdateData[key] = updateData[key];
+      }
+    });
 
-    if (error) {
-      throw new Error(error.message);
+    // Update the plan
+    const updatedPlan = await db.update(
+      "plans",
+      req.params.id,
+      cleanUpdateData
+    );
+
+    if (!updatedPlan) {
+      return res.status(404).json({
+        success: false,
+        message: `Plan not found with id of ${req.params.id}`,
+      });
     }
 
     res.status(200).json({
       success: true,
-      data: plan,
+      data: updatedPlan,
     });
   } catch (error) {
     res.status(500).json({
@@ -265,13 +346,12 @@ exports.updatePlan = async (req, res) => {
 exports.deletePlan = async (req, res) => {
   try {
     // Check if plan exists
-    const { data: existingPlan, error: fetchError } = await supabase
-      .from("plans")
-      .select("*")
-      .eq("id", req.params.id)
-      .single();
+    const existingPlanQuery = await db.query(
+      "SELECT * FROM plans WHERE id = $1",
+      [req.params.id]
+    );
 
-    if (fetchError) {
+    if (existingPlanQuery.rows.length === 0) {
       return res.status(404).json({
         success: false,
         message: `Plan not found with id of ${req.params.id}`,
@@ -279,13 +359,10 @@ exports.deletePlan = async (req, res) => {
     }
 
     // Delete the plan
-    const { error } = await supabase
-      .from("plans")
-      .delete()
-      .eq("id", req.params.id);
+    const deletedPlan = await db.delete("plans", req.params.id);
 
-    if (error) {
-      throw new Error(error.message);
+    if (!deletedPlan) {
+      throw new Error("Failed to delete plan");
     }
 
     res.status(200).json({
@@ -316,17 +393,23 @@ exports.bulkDeletePlans = async (req, res) => {
       });
     }
 
-    // Delete the plans
-    const { error } = await supabase.from("plans").delete().in("id", ids);
+    // Delete the plans using PostgreSQL IN clause
+    const placeholders = ids.map((_, index) => `$${index + 1}`).join(", ");
+    const deleteQuery = `DELETE FROM plans WHERE id IN (${placeholders}) RETURNING *`;
 
-    if (error) {
-      throw new Error(error.message);
+    const result = await db.query(deleteQuery, ids);
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: "No plans found with the provided IDs",
+      });
     }
 
     res.status(200).json({
       success: true,
       data: {},
-      message: `${ids.length} plans deleted successfully`,
+      message: `${result.rows.length} plans deleted successfully`,
     });
   } catch (error) {
     res.status(500).json({
@@ -352,13 +435,12 @@ exports.updatePlanStatus = async (req, res) => {
     }
 
     // Check if plan exists
-    const { data: existingPlan, error: fetchError } = await supabase
-      .from("plans")
-      .select("*")
-      .eq("id", req.params.id)
-      .single();
+    const existingPlanQuery = await db.query(
+      "SELECT * FROM plans WHERE id = $1",
+      [req.params.id]
+    );
 
-    if (fetchError) {
+    if (existingPlanQuery.rows.length === 0) {
       return res.status(404).json({
         success: false,
         message: `Plan not found with id of ${req.params.id}`,
@@ -366,23 +448,20 @@ exports.updatePlanStatus = async (req, res) => {
     }
 
     // Update plan status
-    const { data: plan, error } = await supabase
-      .from("plans")
-      .update({
-        status,
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", req.params.id)
-      .select()
-      .single();
+    const updatedPlan = await db.update("plans", req.params.id, {
+      status,
+    });
 
-    if (error) {
-      throw new Error(error.message);
+    if (!updatedPlan) {
+      return res.status(404).json({
+        success: false,
+        message: `Plan not found with id of ${req.params.id}`,
+      });
     }
 
     res.status(200).json({
       success: true,
-      data: plan,
+      data: updatedPlan,
       message: "Plan status updated successfully",
     });
   } catch (error) {
@@ -400,53 +479,32 @@ exports.updatePlanStatus = async (req, res) => {
 exports.getPlanStats = async (req, res) => {
   try {
     // Get total plans count
-    const { count: totalPlans, error: totalError } = await supabase
-      .from("plans")
-      .select("*", { count: "exact", head: true });
-
-    if (totalError) {
-      throw new Error(totalError.message);
-    }
+    const totalResult = await db.query("SELECT COUNT(*) FROM plans");
+    const totalPlans = parseInt(totalResult.rows[0].count);
 
     // Get active plans count
-    const { count: activePlans, error: activeError } = await supabase
-      .from("plans")
-      .select("*", { count: "exact", head: true })
-      .eq("status", "active");
-
-    if (activeError) {
-      throw new Error(activeError.message);
-    }
+    const activeResult = await db.query(
+      "SELECT COUNT(*) FROM plans WHERE status = 'active'"
+    );
+    const activePlans = parseInt(activeResult.rows[0].count);
 
     // Get inactive plans count
-    const { count: inactivePlans, error: inactiveError } = await supabase
-      .from("plans")
-      .select("*", { count: "exact", head: true })
-      .eq("status", "inactive");
-
-    if (inactiveError) {
-      throw new Error(inactiveError.message);
-    }
+    const inactiveResult = await db.query(
+      "SELECT COUNT(*) FROM plans WHERE status = 'inactive'"
+    );
+    const inactivePlans = parseInt(inactiveResult.rows[0].count);
 
     // Get draft plans count
-    const { count: draftPlans, error: draftError } = await supabase
-      .from("plans")
-      .select("*", { count: "exact", head: true })
-      .eq("status", "draft");
-
-    if (draftError) {
-      throw new Error(draftError.message);
-    }
+    const draftResult = await db.query(
+      "SELECT COUNT(*) FROM plans WHERE status = 'draft'"
+    );
+    const draftPlans = parseInt(draftResult.rows[0].count);
 
     // Get plans by interval
-    const { data: intervalStats, error: intervalError } = await supabase
-      .from("plans")
-      .select("interval")
-      .eq("status", "active");
-
-    if (intervalError) {
-      throw new Error(intervalError.message);
-    }
+    const intervalResult = await db.query(
+      "SELECT interval FROM plans WHERE status = 'active'"
+    );
+    const intervalStats = intervalResult.rows;
 
     // Count plans by interval
     const intervalCounts = intervalStats.reduce((acc, plan) => {
@@ -455,14 +513,10 @@ exports.getPlanStats = async (req, res) => {
     }, {});
 
     // Get average price
-    const { data: priceData, error: priceError } = await supabase
-      .from("plans")
-      .select("price")
-      .eq("status", "active");
-
-    if (priceError) {
-      throw new Error(priceError.message);
-    }
+    const priceResult = await db.query(
+      "SELECT price FROM plans WHERE status = 'active'"
+    );
+    const priceData = priceResult.rows;
 
     const averagePrice =
       priceData.length > 0
@@ -505,30 +559,46 @@ exports.getActivePlans = async (req, res) => {
     } = req.query;
 
     // Build query for active plans only
-    let query = supabase.from("plans").select("*").eq("status", "active");
+    let queryText = "SELECT * FROM plans WHERE status = 'active'";
 
     // Apply ordering
-    const ascending = orderDirection === "asc";
-    query = query.order(orderBy, { ascending });
+    const validOrderFields = ["created_at", "updated_at", "name", "price"];
+    const orderField = validOrderFields.includes(orderBy)
+      ? orderBy
+      : "created_at";
+    const direction = orderDirection === "asc" ? "ASC" : "DESC";
+    queryText += ` ORDER BY ${orderField} ${direction}`;
 
     // Apply pagination
-    if (limit && offset) {
-      query = query.range(
-        parseInt(offset),
-        parseInt(offset) + parseInt(limit) - 1
-      );
+    const values = [];
+    let paramCount = 0;
+
+    if (limit) {
+      paramCount++;
+      queryText += ` LIMIT $${paramCount}`;
+      values.push(parseInt(limit));
     }
 
-    const { data: plans, error, count } = await query;
-
-    if (error) {
-      throw new Error(error.message);
+    if (offset) {
+      paramCount++;
+      queryText += ` OFFSET $${paramCount}`;
+      values.push(parseInt(offset));
     }
+
+    // Execute main query
+    const result = await db.query(queryText, values);
+    const plans = result.rows;
+
+    // Get total count
+    const countResult = await db.query(
+      "SELECT COUNT(*) FROM plans WHERE status = 'active'"
+    );
+    const totalCount = parseInt(countResult.rows[0].count);
 
     res.status(200).json({
       success: true,
       count: plans.length,
-      total: count,
+      total: totalCount,
       data: plans,
     });
   } catch (error) {
@@ -554,43 +624,54 @@ exports.getSubscribers = async (req, res) => {
     } = req.query;
 
     // Get all plans first with optional status filter
-    let planQuery = supabase.from("plans").select("*");
+    let planQuery = "SELECT * FROM plans";
+    const planValues = [];
+    let planParamCount = 0;
 
     if (status && status !== "all") {
-      planQuery = planQuery.eq("status", status);
+      planParamCount++;
+      planQuery += ` WHERE status = $${planParamCount}`;
+      planValues.push(status);
     }
 
-    const { data: allPlans, error: planError } = await planQuery;
+    const planResult = await db.query(planQuery, planValues);
+    const allPlans = planResult.rows;
 
-    if (planError) {
-      throw new Error(planError.message);
-    }
-
-    // Get subscriber counts for each plan
+    // Get subscriber counts for each plan using a more efficient approach
     const plansWithSubscribers = await Promise.all(
       allPlans.map(async (plan) => {
-        // Count active subscriptions
-        const { count: activeCount, error: activeError } = await supabase
-          .from("user_subscriptions")
-          .select("*", { count: "exact", head: true })
-          .eq("plan_id", plan.id)
-          .eq("is_active", true);
+        try {
+          // Count active subscriptions
+          const activeResult = await db.query(
+            "SELECT COUNT(*) FROM user_subscriptions WHERE plan_id = $1 AND is_active = true",
+            [plan.id]
+          );
+          const activeCount = parseInt(activeResult.rows[0].count);
 
-        // Count total subscriptions
-        const { count: totalCount, error: totalError } = await supabase
-          .from("user_subscriptions")
-          .select("*", { count: "exact", head: true })
-          .eq("plan_id", plan.id);
+          // Count total subscriptions
+          const totalResult = await db.query(
+            "SELECT COUNT(*) FROM user_subscriptions WHERE plan_id = $1",
+            [plan.id]
+          );
+          const totalCount = parseInt(totalResult.rows[0].count);
 
-        if (activeError || totalError) {
-          console.log("Error counting subscriptions for plan:", plan.id);
+          return {
+            ...plan,
+            subscriber_count: activeCount || 0,
+            total_subscriptions: totalCount || 0,
+          };
+        } catch (error) {
+          console.log(
+            "Error counting subscriptions for plan:",
+            plan.id,
+            error.message
+          );
+          return {
+            ...plan,
+            subscriber_count: 0,
+            total_subscriptions: 0,
+          };
         }
-
-        return {
-          ...plan,
-          subscriber_count: activeCount || 0,
-          total_subscriptions: totalCount || 0,
-        };
       })
     );
 

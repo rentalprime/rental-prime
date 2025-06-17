@@ -1,8 +1,4 @@
-const { createClient } = require("@supabase/supabase-js");
-const config = require("../config/config");
-
-// Initialize Supabase client
-const supabase = createClient(config.supabaseUrl, config.supabaseKey);
+const db = require("../config/database");
 
 /**
  * Role Controller - Handles all role-related operations
@@ -15,16 +11,12 @@ const RoleController = {
    */
   getAllRoles: async (req, res) => {
     try {
-      const { data, error } = await supabase
-        .from("roles")
-        .select("*")
-        .order("name", { ascending: true });
+      const result = await db.query("SELECT * FROM roles ORDER BY name ASC");
 
-      if (error) {
-        return res.status(400).json({ success: false, error: error.message });
-      }
-
-      return res.status(200).json({ success: true, data });
+      return res.status(200).json({
+        success: true,
+        data: result.rows,
+      });
     } catch (error) {
       console.error("Error in getAllRoles:", error);
       return res.status(500).json({ success: false, error: "Server error" });
@@ -40,23 +32,18 @@ const RoleController = {
     try {
       const { id } = req.params;
 
-      const { data, error } = await supabase
-        .from("roles")
-        .select("*")
-        .eq("id", id)
-        .single();
+      const result = await db.query("SELECT * FROM roles WHERE id = $1", [id]);
 
-      if (error) {
-        return res.status(400).json({ success: false, error: error.message });
-      }
-
-      if (!data) {
+      if (result.rows.length === 0) {
         return res
           .status(404)
           .json({ success: false, error: "Role not found" });
       }
 
-      return res.status(200).json({ success: true, data });
+      return res.status(200).json({
+        success: true,
+        data: result.rows[0],
+      });
     } catch (error) {
       console.error("Error in getRoleById:", error);
       return res.status(500).json({ success: false, error: "Server error" });
@@ -84,46 +71,36 @@ const RoleController = {
       }
 
       // Check if role with this name already exists
-      const { data: existingRole, error: checkError } = await supabase
-        .from("roles")
-        .select("*")
-        .eq("name", name)
-        .maybeSingle();
+      const existingRoleResult = await db.query(
+        "SELECT * FROM roles WHERE name = $1",
+        [name]
+      );
 
-      if (checkError) {
-        return res
-          .status(400)
-          .json({ success: false, error: checkError.message });
-      }
-
-      if (existingRole) {
-        return res
-          .status(400)
-          .json({
-            success: false,
-            error: "Role with this name already exists",
-          });
+      if (existingRoleResult.rows.length > 0) {
+        return res.status(400).json({
+          success: false,
+          error: "Role with this name already exists",
+        });
       }
 
       // Create new role
-      const { data, error } = await supabase
-        .from("roles")
-        .insert([
-          {
-            name,
-            description,
-            permissions: permissions || {},
-            is_system_role,
-            status: "active",
-          },
-        ])
-        .select();
+      const result = await db.query(
+        `INSERT INTO roles (name, description, permissions, is_system_role, status, created_at, updated_at)
+         VALUES ($1, $2, $3, $4, $5, NOW(), NOW())
+         RETURNING *`,
+        [
+          name,
+          description,
+          JSON.stringify(permissions || {}),
+          is_system_role,
+          "active",
+        ]
+      );
 
-      if (error) {
-        return res.status(400).json({ success: false, error: error.message });
-      }
-
-      return res.status(201).json({ success: true, data: data[0] });
+      return res.status(201).json({
+        success: true,
+        data: result.rows[0],
+      });
     } catch (error) {
       console.error("Error in createRole:", error);
       return res.status(500).json({ success: false, error: "Server error" });
@@ -141,23 +118,18 @@ const RoleController = {
       const { name, description, permissions, status } = req.body;
 
       // Check if role exists
-      const { data: existingRole, error: checkError } = await supabase
-        .from("roles")
-        .select("*")
-        .eq("id", id)
-        .single();
+      const existingRoleResult = await db.query(
+        "SELECT * FROM roles WHERE id = $1",
+        [id]
+      );
 
-      if (checkError) {
-        return res
-          .status(400)
-          .json({ success: false, error: checkError.message });
-      }
-
-      if (!existingRole) {
+      if (existingRoleResult.rows.length === 0) {
         return res
           .status(404)
           .json({ success: false, error: "Role not found" });
       }
+
+      const existingRole = existingRoleResult.rows[0];
 
       // Prevent modification of system roles
       if (
@@ -171,24 +143,24 @@ const RoleController = {
       }
 
       // Update role
-      const { data, error } = await supabase
-        .from("roles")
-        .update({
-          name: name || existingRole.name,
-          description:
-            description !== undefined ? description : existingRole.description,
-          permissions: permissions || existingRole.permissions,
-          status: status || existingRole.status,
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", id)
-        .select();
+      const result = await db.query(
+        `UPDATE roles
+         SET name = $1, description = $2, permissions = $3, status = $4, updated_at = NOW()
+         WHERE id = $5
+         RETURNING *`,
+        [
+          name || existingRole.name,
+          description !== undefined ? description : existingRole.description,
+          JSON.stringify(permissions || existingRole.permissions),
+          status || existingRole.status,
+          id,
+        ]
+      );
 
-      if (error) {
-        return res.status(400).json({ success: false, error: error.message });
-      }
-
-      return res.status(200).json({ success: true, data: data[0] });
+      return res.status(200).json({
+        success: true,
+        data: result.rows[0],
+      });
     } catch (error) {
       console.error("Error in updateRole:", error);
       return res.status(500).json({ success: false, error: "Server error" });
@@ -205,23 +177,18 @@ const RoleController = {
       const { id } = req.params;
 
       // Check if role exists and is not a system role
-      const { data: existingRole, error: checkError } = await supabase
-        .from("roles")
-        .select("*")
-        .eq("id", id)
-        .single();
+      const existingRoleResult = await db.query(
+        "SELECT * FROM roles WHERE id = $1",
+        [id]
+      );
 
-      if (checkError) {
-        return res
-          .status(400)
-          .json({ success: false, error: checkError.message });
-      }
-
-      if (!existingRole) {
+      if (existingRoleResult.rows.length === 0) {
         return res
           .status(404)
           .json({ success: false, error: "Role not found" });
       }
+
+      const existingRole = existingRoleResult.rows[0];
 
       if (existingRole.is_system_role) {
         return res.status(403).json({
@@ -231,18 +198,12 @@ const RoleController = {
       }
 
       // Check if role is being used by any users
-      const { data: usersWithRole, error: userCheckError } = await supabase
-        .from("users")
-        .select("id")
-        .eq("role_id", id);
+      const usersWithRoleResult = await db.query(
+        "SELECT id FROM users WHERE role_id = $1",
+        [id]
+      );
 
-      if (userCheckError) {
-        return res
-          .status(400)
-          .json({ success: false, error: userCheckError.message });
-      }
-
-      if (usersWithRole && usersWithRole.length > 0) {
+      if (usersWithRoleResult.rows.length > 0) {
         return res.status(400).json({
           success: false,
           error: "Cannot delete role that is assigned to users",
@@ -250,11 +211,7 @@ const RoleController = {
       }
 
       // Delete role
-      const { error } = await supabase.from("roles").delete().eq("id", id);
-
-      if (error) {
-        return res.status(400).json({ success: false, error: error.message });
-      }
+      await db.query("DELETE FROM roles WHERE id = $1", [id]);
 
       return res.status(200).json({
         success: true,

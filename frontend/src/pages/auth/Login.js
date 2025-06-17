@@ -22,12 +22,9 @@ const Login = () => {
     setLoading(true);
 
     try {
-      console.log("Login form submitted, attempting login with:", email);
       const success = await login(email, password);
-      console.log("Login result:", success);
 
       if (success) {
-        console.log("Login successful, redirecting to dashboard");
         // Add a small delay to ensure authentication state is fully set
         setTimeout(() => {
           // Navigate to root path, which contains the dashboard according to App.js routes
@@ -37,8 +34,6 @@ const Login = () => {
         toast.error("Login failed. Please check your credentials.");
       }
     } catch (error) {
-      console.error("Login error:", error);
-
       // Handle specific error for unauthorized user types
       if (error.message === "UNAUTHORIZED_USER_TYPE") {
         toast.error(

@@ -10,6 +10,7 @@ import {
 } from "react-icons/ri";
 import userService from "../../services/userService";
 import vendorListingService from "../../services/vendorListingService";
+import eventBus, { EVENTS } from "../../utils/eventBus";
 
 const recentActivities = [
   {
@@ -72,29 +73,55 @@ const Dashboard = () => {
     try {
       setDashboardStats((prev) => ({ ...prev, loading: true, error: null }));
 
-      // Fetch total users count - need to call API directly to get count
       const apiUrl =
         process.env.REACT_APP_API_URL ||
         "https://rental-prime-backend-8ilt.onrender.com";
 
-      // Fetch users with count
-      const usersResponse = await fetch(`${apiUrl}/api/users`, {
-        method: "GET",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${localStorage.getItem("token")}`,
-        },
-      });
+      // Use Promise.all for parallel requests to improve performance
+      const [usersResponse, listingsResponse] = await Promise.all([
+        // Fetch users count only (optimized endpoint)
+        fetch(`${apiUrl}/api/users/count`, {
+          method: "GET",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${localStorage.getItem("token")}`,
+          },
+        }),
+        // Fetch vendor listings count only (optimized endpoint)
+        fetch(`${apiUrl}/api/listings/count`, {
+          method: "GET",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${localStorage.getItem("token")}`,
+          },
+        }),
+      ]);
 
       let totalUsers = 0;
+      let totalListings = 0;
+
+      // Process users count response
       if (usersResponse.ok) {
         const usersData = await usersResponse.json();
         totalUsers = usersData.count || 0;
+      } else {
+        console.error("Failed to fetch users count:", usersResponse.status);
+        const errorData = await usersResponse.json().catch(() => ({}));
+        console.error("Users count error details:", errorData);
       }
 
-      // Fetch vendor listings count - get only vendor listings for dashboard
-      const listingsResponse = await vendorListingService.getVendorListings({});
-      const totalListings = listingsResponse.count || 0;
+      // Process listings count response
+      if (listingsResponse.ok) {
+        const listingsData = await listingsResponse.json();
+        totalListings = listingsData.count || 0;
+      } else {
+        console.error(
+          "Failed to fetch listings count:",
+          listingsResponse.status
+        );
+        const errorData = await listingsResponse.json().catch(() => ({}));
+        console.error("Listings count error details:", errorData);
+      }
 
       setDashboardStats({
         totalUsers,
@@ -112,9 +139,46 @@ const Dashboard = () => {
     }
   };
 
-  // Fetch data on component mount
+  // Fetch data on component mount and set up event listeners
   useEffect(() => {
     fetchDashboardStats();
+
+    // Listen for listing events to refresh dashboard
+    const unsubscribeListingCreated = eventBus.on(
+      EVENTS.LISTING_CREATED,
+      () => {
+        fetchDashboardStats();
+      }
+    );
+
+    const unsubscribeListingUpdated = eventBus.on(
+      EVENTS.LISTING_UPDATED,
+      () => {
+        fetchDashboardStats();
+      }
+    );
+
+    const unsubscribeListingDeleted = eventBus.on(
+      EVENTS.LISTING_DELETED,
+      () => {
+        fetchDashboardStats();
+      }
+    );
+
+    const unsubscribeDashboardRefresh = eventBus.on(
+      EVENTS.DASHBOARD_REFRESH,
+      () => {
+        fetchDashboardStats();
+      }
+    );
+
+    // Cleanup event listeners on unmount
+    return () => {
+      unsubscribeListingCreated();
+      unsubscribeListingUpdated();
+      unsubscribeListingDeleted();
+      unsubscribeDashboardRefresh();
+    };
   }, []);
 
   // Create stats array with real data

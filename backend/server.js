@@ -5,26 +5,14 @@ const dotenv = require("dotenv");
 const path = require("path");
 const fs = require("fs");
 
-const { createClient } = require("@supabase/supabase-js");
-
 // Load environment variables
 dotenv.config();
-// const config = require("./config/config");
-// console.log("Using Supabase Key:", config.supabaseKey);
 
-// Initialize Supabase client
-const supabaseUrl =
-  process.env.SUPABASE_URL || "https://vmwjqwgvzmwjomcehabe.supabase.co";
-// const supabaseAnonKey =
-//   process.env.SUPABASE_ANON_KEY ||
-//   "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZtd2pxd2d2em13am9tY2VoYWJlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDc4OTgyODYsImV4cCI6MjA2MzQ3NDI4Nn0.pxO8lrc8z6ByVJ-7bKny7LjRfmCHD4iMcbM1NbaMS8U";
-const supabase_service_role =
-  process.env.SUPABASE_KEY ||
-  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZtd2pxd2d2em13am9tY2VoYWJlIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc0Nzg5ODI4NiwiZXhwIjoyMDYzNDc0Mjg2fQ.H1YMO_Tye6ikWth7csEwPMWI3CxYcQaQ6N6oNXwf-0c";
-const supabase = createClient(supabaseUrl, supabase_service_role);
+// Initialize PostgreSQL database connection
+const db = require("./config/database");
 
-// Make supabase available to route handlers
-global.supabase = supabase;
+// Make database available to route handlers
+global.db = db;
 
 // Import routes
 const authRoutes = require("./routes/auth.routes");
@@ -32,10 +20,10 @@ const userRoutes = require("./routes/user.routes");
 const adminRoutes = require("./routes/admin.routes");
 const categoryRoutes = require("./routes/category.routes");
 const listingRoutes = require("./routes/listing.routes.new");
-const adminListingRoutes = require("./routes/listing.routes");
-const paymentRoutes = require("./routes/payment.routes");
 const planRoutes = require("./routes/plan.routes");
 const subscriptionRoutes = require("./routes/subscription.routes");
+const adminListingRoutes = require("./routes/listing.routes");
+const paymentRoutes = require("./routes/payment.routes");
 const settingRoutes = require("./routes/setting.routes");
 const notificationRoutes = require("./routes/notification.routes");
 const supportRoutes = require("./routes/support.routes");
@@ -89,14 +77,27 @@ app.use(express.urlencoded({ extended: true }));
 app.use(morgan("dev"));
 
 // Health check endpoint
-app.get("/api/health", (req, res) => {
-  res.status(200).json({
-    status: "ok",
-    timestamp: new Date().toISOString(),
-    environment: process.env.NODE_ENV || "development",
-    supabase: supabaseUrl ? "configured" : "not configured",
-    version: "1.0.0",
-  });
+app.get("/api/health", async (req, res) => {
+  try {
+    // Test database connection
+    await db.query("SELECT 1");
+    res.status(200).json({
+      status: "ok",
+      timestamp: new Date().toISOString(),
+      environment: process.env.NODE_ENV || "development",
+      database: "connected",
+      version: "1.0.0",
+    });
+  } catch (error) {
+    res.status(500).json({
+      status: "error",
+      timestamp: new Date().toISOString(),
+      environment: process.env.NODE_ENV || "development",
+      database: "disconnected",
+      error: error.message,
+      version: "1.0.0",
+    });
+  }
 });
 
 // API Routes
@@ -104,11 +105,11 @@ app.use("/api/auth", authRoutes);
 app.use("/api/users", userRoutes);
 app.use("/api/admins", adminRoutes);
 app.use("/api/categories", categoryRoutes);
-app.use("/api/admin/listings", adminListingRoutes);
 app.use("/api/listings", listingRoutes);
-app.use("/api/payments", paymentRoutes);
 app.use("/api/plans", planRoutes);
 app.use("/api/subscriptions", subscriptionRoutes);
+app.use("/api/admin/listings", adminListingRoutes);
+app.use("/api/payments", paymentRoutes);
 app.use("/api/settings", settingRoutes);
 app.use("/api/notifications", notificationRoutes);
 app.use("/api/support", supportRoutes);
@@ -149,7 +150,7 @@ const PORT = process.env.PORT || 5001;
 // Start the server
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
-  console.log(`Supabase client initialized with URL: ${supabaseUrl}`);
+  console.log(`PostgreSQL database connected`);
 });
 
 // Export the app for potential use as a module

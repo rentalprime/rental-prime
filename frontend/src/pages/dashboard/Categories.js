@@ -1,6 +1,7 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { toast } from "react-hot-toast";
 import categoryService from "../../services/categoryService";
+import useDebounce from "../../hooks/useDebounce";
 import {
   RiAddLine,
   RiEdit2Line,
@@ -30,6 +31,9 @@ const Categories = () => {
   const [searchTerm, setSearchTerm] = useState("");
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [sortOrder, setSortOrder] = useState("name-asc"); // Default: sort by name ascending
+
+  // Debounced search term to prevent excessive API calls
+  const debouncedSearchTerm = useDebounce(searchTerm, 500);
   // Parent categories for dropdown
   const [parentCategories, setParentCategories] = useState([]);
   // View mode: 'flat', 'tree', or 'grouped'
@@ -41,6 +45,12 @@ const Categories = () => {
   // Store listing counts for each category
   const [listingCounts, setListingCounts] = useState({});
   const [loadingCounts, setLoadingCounts] = useState(false);
+
+  // Timer for debouncing listing count fetches
+  const [listingCountTimer, setListingCountTimer] = useState(null);
+
+  // Feature flag to disable listing counts temporarily
+  const ENABLE_LISTING_COUNTS = true; // Set to true to enable listing counts
 
   // Helper function to process icon data from backend response
   const processIconData = (category) => {
@@ -113,25 +123,71 @@ const Categories = () => {
     { emoji: "🌊", name: "Ocean Wave" },
   ];
 
-  // Fetch listing counts for all categories
-  const fetchListingCounts = async (categoryList) => {
-    if (!categoryList || categoryList.length === 0) return;
+  // Debounced function to fetch listing counts
+  const fetchListingCounts = useCallback(
+    async (categoryList) => {
+      if (!categoryList || categoryList.length === 0) return;
+      if (loadingCounts) return; // Prevent multiple simultaneous calls
 
-    setLoadingCounts(true);
-    try {
-      const categoryIds = categoryList.map((cat) => cat.id);
-      const counts = await categoryService.getCategoryListingCounts(
-        categoryIds
-      );
-      setListingCounts(counts);
-      console.log("Listing counts loaded:", counts);
-    } catch (error) {
-      console.error("Error fetching listing counts:", error);
-      // Don't show error toast as this is not critical functionality
-    } finally {
-      setLoadingCounts(false);
-    }
-  };
+      setLoadingCounts(true);
+      try {
+        const categoryIds = categoryList.map((cat) => cat.id);
+
+        // Only fetch counts for categories we don't already have
+        const missingIds = categoryIds.filter((id) => !(id in listingCounts));
+
+        if (missingIds.length === 0) {
+          setLoadingCounts(false);
+          return;
+        }
+
+        const counts = await categoryService.getCategoryListingCounts(
+          missingIds
+        );
+
+        // Merge with existing counts
+        setListingCounts((prev) => ({ ...prev, ...counts }));
+      } catch (error) {
+        console.error("Error fetching listing counts:", error);
+        // Don't show error toast as this is not critical functionality
+      } finally {
+        setLoadingCounts(false);
+      }
+    },
+    [loadingCounts, listingCounts]
+  );
+
+  // Debounced version to prevent excessive API calls
+  const debouncedFetchListingCounts = useCallback(
+    (categoryList) => {
+      // Check feature flag
+      if (!ENABLE_LISTING_COUNTS) {
+        return;
+      }
+
+      // Clear existing timer
+      if (listingCountTimer) {
+        clearTimeout(listingCountTimer);
+      }
+
+      // Set new timer
+      const timer = setTimeout(() => {
+        fetchListingCounts(categoryList);
+      }, 500); // Reduced delay for batch request
+
+      setListingCountTimer(timer);
+    },
+    [fetchListingCounts, listingCountTimer, ENABLE_LISTING_COUNTS]
+  );
+
+  // Cleanup timer on unmount
+  useEffect(() => {
+    return () => {
+      if (listingCountTimer) {
+        clearTimeout(listingCountTimer);
+      }
+    };
+  }, [listingCountTimer]);
 
   // Fetch categories on component mount and when filters change
   // Initial data loading
@@ -140,11 +196,16 @@ const Categories = () => {
     fetchParentCategories();
   }, []);
 
+  // Fetch categories when debounced search term changes
+  useEffect(() => {
+    fetchCategories();
+  }, [debouncedSearchTerm]);
+
   useEffect(() => {
     if (viewMode === "tree") {
       fetchCategoryTree();
     }
-  }, [searchTerm, viewMode]);
+  }, [debouncedSearchTerm, viewMode]);
 
   // Render a single category in the tree view
   const renderCategoryNode = (category) => {
@@ -234,14 +295,10 @@ const Categories = () => {
   // Fetch category tree for hierarchical view
   const fetchCategoryTree = async () => {
     try {
-      console.log("Fetching category tree...");
-
       const data = await categoryService.getCategoryTree();
-      console.log("Raw tree data:", data);
 
       // Process the data to ensure icons are properly formatted for rendering
       const processedTree = processCategoryTreeIcons(data);
-      console.log("Processed tree with icons:", processedTree);
 
       setCategoryTree(processedTree);
 
@@ -258,7 +315,7 @@ const Categories = () => {
       };
 
       const allTreeCategories = flattenTree(processedTree);
-      fetchListingCounts(allTreeCategories);
+      debouncedFetchListingCounts(allTreeCategories);
     } catch (error) {
       console.error("Error fetching category tree:", error);
       toast.error("Failed to load category tree");
@@ -288,7 +345,7 @@ const Categories = () => {
     setLoading(true);
     try {
       const filters = {
-        search: searchTerm,
+        search: debouncedSearchTerm,
         status: "all", // We'll get all and filter in the UI
         orderBy: "created_at",
         orderDirection: "desc",
@@ -300,10 +357,9 @@ const Categories = () => {
       const transformedData = data.map((category) => processIconData(category));
 
       setCategories(transformedData);
-      console.log("Categories loaded:", transformedData);
 
-      // Fetch listing counts for the loaded categories
-      fetchListingCounts(transformedData);
+      // Fetch listing counts for the loaded categories (debounced)
+      debouncedFetchListingCounts(transformedData);
     } catch (error) {
       console.error("Error fetching categories:", error);
       toast.error(
@@ -419,7 +475,6 @@ const Categories = () => {
       iconType: "emoji",
     });
     setShowEmojiPicker(false);
-    console.log("Selected emoji:", emoji);
   };
 
   // Format date for display

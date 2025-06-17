@@ -12,11 +12,9 @@ class RoleService extends BaseService {
    */
   async getAllRoles() {
     try {
-      console.log("Fetching all roles from API");
       const response = await apiClient.get(this.baseUrl);
       const data = response.data.data || response.data;
 
-      console.log("Successfully fetched roles:", data);
       return data || [];
     } catch (error) {
       console.error("Error fetching roles:", error);
@@ -30,11 +28,9 @@ class RoleService extends BaseService {
    */
   async getActiveRoles() {
     try {
-      console.log("Fetching active roles from API");
       const response = await apiClient.get(`${this.baseUrl}?status=active`);
       const data = response.data.data || response.data;
 
-      console.log("Successfully fetched active roles:", data);
       return data || [];
     } catch (error) {
       console.error("Error fetching active roles:", error);
@@ -49,11 +45,9 @@ class RoleService extends BaseService {
    */
   async createRole(role) {
     try {
-      console.log("Creating new role:", role);
       const response = await apiClient.post(this.baseUrl, role);
       const data = response.data.data || response.data;
 
-      console.log("Role created successfully:", data);
       return data;
     } catch (error) {
       console.error("Error creating role:", error);
@@ -69,11 +63,9 @@ class RoleService extends BaseService {
    */
   async updateRole(id, role) {
     try {
-      console.log("Updating role:", id, role);
       const response = await apiClient.put(`${this.baseUrl}/${id}`, role);
       const data = response.data.data || response.data;
 
-      console.log("Role updated successfully:", data);
       return data;
     } catch (error) {
       console.error("Error updating role:", error);
@@ -88,9 +80,7 @@ class RoleService extends BaseService {
    */
   async deleteRole(id) {
     try {
-      console.log("Deleting role:", id);
       await apiClient.delete(`${this.baseUrl}/${id}`);
-      console.log("Role deleted successfully");
     } catch (error) {
       console.error("Error deleting role:", error);
       throw error;
@@ -104,11 +94,9 @@ class RoleService extends BaseService {
    */
   async getRoleById(id) {
     try {
-      console.log("Fetching role by ID:", id);
       const response = await apiClient.get(`${this.baseUrl}/${id}`);
       const data = response.data.data || response.data;
 
-      console.log("Successfully fetched role by ID:", data);
       return data;
     } catch (error) {
       console.error("Error fetching role by ID:", error);

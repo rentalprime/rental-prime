@@ -21,8 +21,6 @@ class ListingService extends BaseService {
    */
   async getListings(filters = {}) {
     try {
-      console.log("Fetching listings with filters:", filters);
-
       // Build query parameters
       const queryParams = new URLSearchParams();
 
@@ -78,7 +76,6 @@ class ListingService extends BaseService {
         process.env.REACT_APP_API_URL ||
         "https://rental-prime-backend-8ilt.onrender.com";
       const fullUrl = `${apiUrl}/api/admin/listings?${queryParams.toString()}`;
-      console.log("Fetching admin listings from URL:", fullUrl);
 
       const response = await fetch(fullUrl, {
         method: "GET",
@@ -88,11 +85,8 @@ class ListingService extends BaseService {
         },
       });
 
-      console.log("Response status:", response.status);
-
       if (!response.ok) {
         const errorData = await response.json();
-        console.error("API error fetching admin listings:", errorData);
         return {
           data: [],
           count: 0,
@@ -102,7 +96,6 @@ class ListingService extends BaseService {
       }
 
       const data = await response.json();
-      console.log("Raw API response:", data);
 
       // Return the full response object to maintain count and data structure
       if (data.success && data.data) {
@@ -120,7 +113,6 @@ class ListingService extends BaseService {
         success: false,
       };
     } catch (error) {
-      console.error("Error fetching listings with filters:", error);
       // Return proper format instead of throwing to prevent UI errors
       return {
         data: [],
@@ -138,11 +130,8 @@ class ListingService extends BaseService {
    */
   async getListing(id) {
     try {
-      console.log("Fetching listing details for ID:", id);
-
       const apiUrl = process.env.REACT_APP_API_URL || "http://localhost:5001";
       const fullUrl = `${apiUrl}/api/admin/listings/${id}`;
-      console.log("Fetching admin listing from URL:", fullUrl);
 
       const response = await fetch(fullUrl, {
         method: "GET",
@@ -152,15 +141,12 @@ class ListingService extends BaseService {
         },
       });
 
-      console.log("Response status:", response.status);
-
       if (!response.ok) {
         const errorData = await response.json();
         throw new Error(errorData.message || `Failed to fetch listing ${id}`);
       }
 
       const data = await response.json();
-      console.log("Raw API response:", data);
 
       // Return the data from the response
       if (data.success && data.data) {
@@ -170,7 +156,6 @@ class ListingService extends BaseService {
       // Fallback for unexpected response format
       return data;
     } catch (error) {
-      console.error("Error getting listing by ID:", error);
       throw error;
     }
   }
@@ -182,8 +167,6 @@ class ListingService extends BaseService {
    */
   async createListing(listing) {
     try {
-      console.log("Creating new listing with data:", listing);
-
       // Validate required fields
       if (!listing.title) throw new Error("Listing title is required");
       if (!listing.price) throw new Error("Listing price is required");
@@ -207,7 +190,6 @@ class ListingService extends BaseService {
       // Use the admin API endpoint for admin dashboard
       const apiUrl = process.env.REACT_APP_API_URL || "http://localhost:5001";
       const fullUrl = `${apiUrl}/api/admin/listings`;
-      console.log("Creating admin listing at URL:", fullUrl);
 
       const response = await fetch(fullUrl, {
         method: "POST",
@@ -218,15 +200,12 @@ class ListingService extends BaseService {
         body: JSON.stringify(listingData),
       });
 
-      console.log("Response status:", response.status);
-
       if (!response.ok) {
         const errorData = await response.json();
         throw new Error(errorData.message || "Failed to create listing");
       }
 
       const data = await response.json();
-      console.log("Listing created successfully:", data);
 
       // Return the data from the response
       if (data.success && data.data) {
@@ -236,7 +215,6 @@ class ListingService extends BaseService {
       // Fallback for unexpected response format
       return data;
     } catch (error) {
-      console.error("Error creating listing:", error);
       throw error;
     }
   }
@@ -249,8 +227,6 @@ class ListingService extends BaseService {
    */
   async updateListing(id, updates) {
     try {
-      console.log(`Updating listing ${id} with data:`, updates);
-
       if (!id) throw new Error("Listing ID is required");
 
       // Ensure price is a number if provided
@@ -267,7 +243,6 @@ class ListingService extends BaseService {
       // Use the admin API endpoint for admin dashboard
       const apiUrl = process.env.REACT_APP_API_URL || "http://localhost:5001";
       const fullUrl = `${apiUrl}/api/admin/listings/${id}`;
-      console.log("Updating admin listing at URL:", fullUrl);
 
       const response = await fetch(fullUrl, {
         method: "PUT",
@@ -278,15 +253,12 @@ class ListingService extends BaseService {
         body: JSON.stringify(updatedData),
       });
 
-      console.log("Response status:", response.status);
-
       if (!response.ok) {
         const errorData = await response.json();
         throw new Error(errorData.message || `Failed to update listing ${id}`);
       }
 
       const data = await response.json();
-      console.log("Raw API response:", data);
 
       // Return the data from the response
       if (data.success && data.data) {
@@ -296,7 +268,6 @@ class ListingService extends BaseService {
       // Fallback for unexpected response format
       return data;
     } catch (error) {
-      console.error("Error updating listing:", error);
       throw error;
     }
   }
@@ -308,8 +279,6 @@ class ListingService extends BaseService {
    */
   async deleteListing(id) {
     try {
-      console.log(`Deleting listing with ID ${id}`);
-
       if (!id) {
         throw new Error("Listing ID is required");
       }
@@ -317,7 +286,6 @@ class ListingService extends BaseService {
       // Use the admin API endpoint for admin dashboard
       const apiUrl = process.env.REACT_APP_API_URL || "http://localhost:5001";
       const fullUrl = `${apiUrl}/api/admin/listings/${id}`;
-      console.log("Deleting admin listing at URL:", fullUrl);
 
       const response = await fetch(fullUrl, {
         method: "DELETE",
@@ -326,16 +294,11 @@ class ListingService extends BaseService {
         },
       });
 
-      console.log("Response status:", response.status);
-
       if (!response.ok) {
         const errorData = await response.json();
         throw new Error(errorData.message || `Failed to delete listing ${id}`);
       }
-
-      console.log("Listing deleted successfully");
     } catch (error) {
-      console.error("Error deleting listing:", error);
       throw error;
     }
   }
@@ -349,11 +312,6 @@ class ListingService extends BaseService {
    */
   async getListingsByCategory(categoryId, options = {}) {
     try {
-      console.log(
-        `Fetching listings for category ID ${categoryId} with options:`,
-        options
-      );
-
       // For category-specific listings, we'll use the main getListings method with category filter
       const filters = {
         category: categoryId,
@@ -362,7 +320,6 @@ class ListingService extends BaseService {
 
       return await this.getListings(filters);
     } catch (error) {
-      console.error("Error getting listings by category:", error);
       return [];
     }
   }
@@ -374,8 +331,6 @@ class ListingService extends BaseService {
    */
   async getFeaturedListings(limit = 8) {
     try {
-      console.log("Fetching featured listings with limit:", limit);
-
       // Use the main getListings method with featured filter
       const filters = {
         is_featured: true,
@@ -386,7 +341,6 @@ class ListingService extends BaseService {
 
       return await this.getListings(filters);
     } catch (error) {
-      console.error("Error getting featured listings:", error);
       return [];
     }
   }
@@ -400,12 +354,8 @@ class ListingService extends BaseService {
     try {
       // This method would need to be implemented via API
       // For now, return 0 as a placeholder
-      console.warn(
-        `countListingsByCategory not implemented via API yet for category: ${categoryId}`
-      );
       return 0;
     } catch (error) {
-      console.error("Error counting listings by category:", error);
       return 0;
     }
   }

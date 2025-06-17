@@ -18,7 +18,6 @@ class PlanService extends BaseService {
 
       return response.data || response;
     } catch (error) {
-      console.error("Error fetching plans with filters:", error);
       throw error;
     }
   }
@@ -35,7 +34,6 @@ class PlanService extends BaseService {
 
       return response.data || response;
     } catch (error) {
-      console.error("Error fetching plan statistics:", error);
       throw error;
     }
   }

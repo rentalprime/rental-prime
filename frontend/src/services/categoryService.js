@@ -16,8 +16,6 @@ class CategoryService extends BaseService {
    */
   async getCategories(filters = {}) {
     try {
-      console.log("Fetching categories with filters:", filters);
-
       // Build query parameters
       const params = {};
       if (filters.status && filters.status !== "all") {
@@ -49,7 +47,6 @@ class CategoryService extends BaseService {
       }
 
       const data = response.data || [];
-      console.log(`Successfully fetched ${data.length} categories`);
       return data;
     } catch (error) {
       console.error("Error fetching categories with filters:", error);
@@ -64,7 +61,6 @@ class CategoryService extends BaseService {
    */
   async getCategoryById(id) {
     try {
-      console.log("Fetching category by ID:", id);
       const response = await apiClient.get(`/api/categories/${id}`);
 
       if (response.error) {
@@ -76,7 +72,6 @@ class CategoryService extends BaseService {
         throw new Error(`Category with ID ${id} not found`);
       }
 
-      console.log("Successfully fetched category:", data);
       return data;
     } catch (error) {
       console.error("Error fetching category by ID:", error);
@@ -91,8 +86,6 @@ class CategoryService extends BaseService {
    */
   async createCategory(category) {
     try {
-      console.log("Creating new category:", category);
-
       // Validate required fields
       if (!category.name || !category.name.trim()) {
         throw new Error("Category name is required");
@@ -106,8 +99,6 @@ class CategoryService extends BaseService {
         image_url: category.image_url || null,
       };
 
-      console.log("Creating category with data:", categoryData);
-
       const response = await apiClient.post("/api/categories", categoryData);
 
       if (response.error) {
@@ -119,7 +110,6 @@ class CategoryService extends BaseService {
         throw new Error("Category created but no data returned");
       }
 
-      console.log("Category created successfully:", data);
       return data;
     } catch (error) {
       console.error("Error creating category:", error);
@@ -135,8 +125,6 @@ class CategoryService extends BaseService {
    */
   async updateCategory(id, category) {
     try {
-      console.log("Updating category ID:", id, "with data:", category);
-
       const updateData = {
         name: category.name?.trim(),
         description: category.description || "",
@@ -144,8 +132,6 @@ class CategoryService extends BaseService {
         parent_id: category.parent_id || null,
         image_url: category.image_url || null,
       };
-
-      console.log("Updating category with data:", updateData);
 
       const response = await apiClient.put(`/api/categories/${id}`, updateData);
 
@@ -158,7 +144,6 @@ class CategoryService extends BaseService {
         throw new Error("No data returned after update");
       }
 
-      console.log("Category updated successfully:", data);
       return data;
     } catch (error) {
       console.error("Error updating category:", error);
@@ -173,15 +158,11 @@ class CategoryService extends BaseService {
    */
   async deleteCategory(id) {
     try {
-      console.log("Deleting category ID:", id);
-
       const response = await apiClient.delete(`/api/categories/${id}`);
 
       if (response.error) {
         throw new Error(response.error.message);
       }
-
-      console.log("Category deleted successfully");
     } catch (error) {
       console.error("Error deleting category:", error);
       throw error;
@@ -194,7 +175,6 @@ class CategoryService extends BaseService {
    */
   async getActiveCategories() {
     try {
-      console.log("Fetching active categories");
       const response = await apiClient.get("/api/categories", {
         status: "active",
         orderBy: "name",
@@ -206,7 +186,6 @@ class CategoryService extends BaseService {
       }
 
       const data = response.data || [];
-      console.log(`Successfully fetched ${data.length} active categories`);
       return data;
     } catch (error) {
       console.error("Error fetching active categories:", error);
@@ -220,7 +199,6 @@ class CategoryService extends BaseService {
    */
   async getParentCategories() {
     try {
-      console.log("Fetching parent categories");
       const response = await apiClient.get("/api/categories", {
         status: "active",
         parent_id: "null",
@@ -233,7 +211,6 @@ class CategoryService extends BaseService {
       }
 
       const data = response.data || [];
-      console.log(`Successfully fetched ${data.length} parent categories`);
       return data;
     } catch (error) {
       console.error("Error fetching parent categories:", error);
@@ -248,7 +225,6 @@ class CategoryService extends BaseService {
    */
   async getSubcategories(parentId) {
     try {
-      console.log(`Fetching subcategories for parent ID: ${parentId}`);
       const response = await apiClient.get("/api/categories", {
         status: "active",
         parent_id: parentId,
@@ -261,7 +237,6 @@ class CategoryService extends BaseService {
       }
 
       const data = response.data || [];
-      console.log(`Successfully fetched ${data.length} subcategories`);
       return data;
     } catch (error) {
       console.error(
@@ -278,7 +253,6 @@ class CategoryService extends BaseService {
    */
   async getCategoryTree() {
     try {
-      console.log("Fetching category tree");
       const response = await apiClient.get("/api/categories/hierarchy", {
         status: "active",
       });
@@ -288,9 +262,6 @@ class CategoryService extends BaseService {
       }
 
       const data = response.data || [];
-      console.log(
-        `Successfully fetched category tree with ${data.length} root categories`
-      );
       return data;
     } catch (error) {
       console.error("Error fetching category tree:", error);
@@ -304,7 +275,6 @@ class CategoryService extends BaseService {
    */
   async getCategoriesForDropdown() {
     try {
-      console.log("Fetching categories for dropdown");
       const categories = await this.getActiveCategories();
 
       // Format categories for dropdown use
@@ -318,9 +288,6 @@ class CategoryService extends BaseService {
         originalData: category,
       }));
 
-      console.log(
-        `Successfully formatted ${formattedCategories.length} categories for dropdown`
-      );
       return formattedCategories;
     } catch (error) {
       console.error("Error fetching categories for dropdown:", error);
@@ -334,7 +301,6 @@ class CategoryService extends BaseService {
    */
   async getCategoryHierarchyForDropdown() {
     try {
-      console.log("Fetching category hierarchy for dropdown");
       const tree = await this.getCategoryTree();
 
       // Format tree structure for dropdown use
@@ -352,9 +318,6 @@ class CategoryService extends BaseService {
         })),
       }));
 
-      console.log(
-        `Successfully formatted category hierarchy with ${formattedHierarchy.length} main categories`
-      );
       return formattedHierarchy;
     } catch (error) {
       console.error("Error fetching category hierarchy for dropdown:", error);
@@ -369,7 +332,6 @@ class CategoryService extends BaseService {
    */
   async getCategoryListingCount(categoryId) {
     try {
-      console.log(`Fetching listing count for category ID: ${categoryId}`);
       const response = await apiClient.get(
         `/api/listings/category/${categoryId}`
       );
@@ -379,7 +341,6 @@ class CategoryService extends BaseService {
       }
 
       const count = response.count || 0;
-      console.log(`Category ${categoryId} has ${count} listings`);
       return count;
     } catch (error) {
       console.error(
@@ -398,25 +359,26 @@ class CategoryService extends BaseService {
    */
   async getCategoryListingCounts(categoryIds) {
     try {
-      console.log(
-        `Fetching listing counts for ${categoryIds.length} categories`
-      );
+      // Limit the number of categories to prevent excessive API calls
+      const maxCategories = 50;
+      const limitedIds = categoryIds.slice(0, maxCategories);
 
-      // Fetch counts for all categories in parallel
-      const countPromises = categoryIds.map(async (categoryId) => {
-        const count = await this.getCategoryListingCount(categoryId);
-        return { categoryId, count };
+      if (limitedIds.length < categoryIds.length) {
+        console.warn(
+          `Limited category count requests to ${maxCategories} out of ${categoryIds.length} categories`
+        );
+      }
+
+      // Make a single batch request for all category counts
+      const response = await apiClient.post("/api/listings/category-counts", {
+        categoryIds: limitedIds,
       });
 
-      const results = await Promise.all(countPromises);
+      if (response.error) {
+        throw new Error(response.error.message);
+      }
 
-      // Convert to object format
-      const countsMap = results.reduce((acc, { categoryId, count }) => {
-        acc[categoryId] = count;
-        return acc;
-      }, {});
-
-      console.log(`Successfully fetched listing counts:`, countsMap);
+      const countsMap = response.data || {};
       return countsMap;
     } catch (error) {
       console.error("Error fetching category listing counts:", error);

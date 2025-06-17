@@ -9,6 +9,7 @@ import MediaUploadStep from "./steps/MediaUploadStep";
 import TermsPoliciesStep from "./steps/TermsPoliciesStep";
 import ReviewSubmitStep from "./steps/ReviewSubmitStep";
 import listingService from "../services/listingService";
+import eventBus, { EVENTS } from "../utils/eventBus";
 
 const steps = [
   { label: "Basic Info", icon: "📦" },
@@ -237,6 +238,10 @@ const MultiStepForm = ({ isEditMode = false, listingId = null }) => {
         if (result) {
           toast.success("Listing updated successfully!");
           console.log("Updated listing:", result);
+
+          // Emit event to refresh dashboard
+          eventBus.emit(EVENTS.LISTING_UPDATED, result);
+
           // Navigate back to listings page
           navigate("/listings");
         }
@@ -246,6 +251,10 @@ const MultiStepForm = ({ isEditMode = false, listingId = null }) => {
         if (result) {
           toast.success("Listing created successfully!");
           console.log("Created listing:", result);
+
+          // Emit event to refresh dashboard
+          eventBus.emit(EVENTS.LISTING_CREATED, result);
+
           // Reset form
           setFormData(initialFormData);
           setCurrentStep(0);

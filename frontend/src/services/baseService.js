@@ -12,7 +12,6 @@ class BaseService {
       const response = await apiClient.get(this.baseUrl);
       return response.data.data || response.data;
     } catch (error) {
-      console.error(`Error fetching ${this.tableName}:`, error);
       throw error;
     }
   }
@@ -23,7 +22,6 @@ class BaseService {
       const response = await apiClient.get(`${this.baseUrl}/${id}`);
       return response.data.data || response.data;
     } catch (error) {
-      console.error(`Error fetching ${this.tableName} by ID:`, error);
       throw error;
     }
   }

@@ -21,9 +21,6 @@ const apiUrl = getEnvVariable(
   "https://rental-prime-backend-8ilt.onrender.com"
 );
 
-console.log("API URL:", apiUrl);
-console.log("Environment:", isProduction ? "production" : "development");
-
 const API_CONFIG = {
   // Base URL for the backend API
   baseUrl: apiUrl,

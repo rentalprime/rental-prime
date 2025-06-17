@@ -1,39 +1,44 @@
-const supabase = require("../config/supabase");
-const { createClient } = require("@supabase/supabase-js");
-const config = require("../config/config");
-
-// Initialize Supabase client
-const supabaseClient = createClient(config.supabaseUrl, config.supabaseKey);
+const db = require("../config/database");
+const bcrypt = require("bcryptjs");
+const { v4: uuidv4 } = require("uuid");
 
 // @desc    Get all admin users
 // @route   GET /api/admins
 // @access  Private/SuperAdmin
 exports.getAdminUsers = async (req, res) => {
   try {
-    // Check if the requesting user is super_admin
-    if (!req.user || req.user.user_type !== "super_admin") {
-      return res.status(403).json({
-        success: false,
-        message: "Access denied. Only super_admin can view admin users.",
-      });
-    }
-
+    // Authentication and authorization handled by middleware
     // Get all admin users with their role information
-    const {
-      data: adminUsers,
-      error,
-      count,
-    } = await supabase
-      .from("admin_users")
-      .select("*, roles(name, description, permissions)", { count: "exact" });
+    const query = `
+      SELECT au.*, r.name as role_name, r.description as role_description, r.permissions as role_permissions
+      FROM admin_users au
+      LEFT JOIN roles r ON au.role_id = r.id
+      ORDER BY au.created_at DESC
+    `;
 
-    if (error) {
-      throw new Error(error.message);
-    }
+    const result = await db.query(query);
+    const adminUsers = result.rows.map((user) => ({
+      ...user,
+      roles: user.role_name
+        ? {
+            name: user.role_name,
+            description: user.role_description,
+            permissions: user.role_permissions,
+          }
+        : null,
+    }));
+
+    // Remove sensitive data
+    adminUsers.forEach((user) => {
+      delete user.password;
+      delete user.role_name;
+      delete user.role_description;
+      delete user.role_permissions;
+    });
 
     res.status(200).json({
       success: true,
-      count: count,
+      count: adminUsers.length,
       data: adminUsers,
     });
   } catch (error) {
@@ -50,30 +55,44 @@ exports.getAdminUsers = async (req, res) => {
 // @access  Private/SuperAdmin
 exports.getAdminUser = async (req, res) => {
   try {
-    // Check if the requesting user is super_admin
-    if (!req.user || req.user.user_type !== "super_admin") {
-      return res.status(403).json({
-        success: false,
-        message: "Access denied. Only super_admin can view admin users.",
-      });
-    }
+    // Authentication and authorization handled by middleware
+    const query = `
+      SELECT au.*, r.name as role_name, r.description as role_description, r.permissions as role_permissions
+      FROM admin_users au
+      LEFT JOIN roles r ON au.role_id = r.id
+      WHERE au.id = $1
+    `;
 
-    const { data: adminUser, error } = await supabase
-      .from("admin_users")
-      .select("*, roles(name, description, permissions)")
-      .eq("id", req.params.id)
-      .single();
+    const result = await db.query(query, [req.params.id]);
 
-    if (error) {
+    if (result.rows.length === 0) {
       return res.status(404).json({
         success: false,
         message: `Admin user not found with id of ${req.params.id}`,
       });
     }
 
+    const adminUser = result.rows[0];
+    const formattedUser = {
+      ...adminUser,
+      roles: adminUser.role_name
+        ? {
+            name: adminUser.role_name,
+            description: adminUser.role_description,
+            permissions: adminUser.role_permissions,
+          }
+        : null,
+    };
+
+    // Remove sensitive data
+    delete formattedUser.password;
+    delete formattedUser.role_name;
+    delete formattedUser.role_description;
+    delete formattedUser.role_permissions;
+
     res.status(200).json({
       success: true,
-      data: adminUser,
+      data: formattedUser,
     });
   } catch (error) {
     res.status(500).json({
@@ -89,14 +108,7 @@ exports.getAdminUser = async (req, res) => {
 // @access  Private/SuperAdmin
 exports.createAdminUser = async (req, res) => {
   try {
-    // Check if the requesting user is super_admin
-    if (!req.user || req.user.user_type !== "super_admin") {
-      return res.status(403).json({
-        success: false,
-        message: "Access denied. Only super_admin can create admin users.",
-      });
-    }
-
+    // Authentication and authorization handled by middleware
     const { name, email, password, status, user_type } = req.body;
 
     // Validate required fields
@@ -124,18 +136,13 @@ exports.createAdminUser = async (req, res) => {
       });
     }
 
-    // Check if admin user already exists in Supabase
-    const { data: existingAdmins, error: checkError } = await supabase
-      .from("admin_users")
-      .select("email")
-      .eq("email", email)
-      .limit(1);
+    // Check if admin user already exists
+    const existingAdminQuery = await db.query(
+      "SELECT email FROM admin_users WHERE email = $1 LIMIT 1",
+      [email]
+    );
 
-    if (checkError) {
-      throw new Error(checkError.message);
-    }
-
-    if (existingAdmins && existingAdmins.length > 0) {
+    if (existingAdminQuery.rows.length > 0) {
       return res.status(400).json({
         success: false,
         message: "Admin user already exists",
@@ -146,57 +153,47 @@ exports.createAdminUser = async (req, res) => {
     // Map user_type to role name for admin users
     const roleName = user_type;
 
-    const { data: roleData, error: roleError } = await supabase
-      .from("roles")
-      .select("id")
-      .eq("name", roleName)
-      .single();
+    const roleQuery = await db.query("SELECT id FROM roles WHERE name = $1", [
+      roleName,
+    ]);
 
-    if (roleError) {
-      throw new Error(
-        `Role not found for user type ${user_type}. Error: ${roleError.message}`
-      );
-    }
-
-    const adminRoleId = roleData.id;
-
-    // Create admin user in Supabase Auth
-    const { data: authData, error: authError } =
-      await supabase.auth.admin.createUser({
-        email,
-        password,
-        email_confirm: true,
+    if (roleQuery.rows.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: `Role not found for user type ${user_type}`,
       });
-
-    if (authError) {
-      throw new Error(authError.message);
     }
+
+    const adminRoleId = roleQuery.rows[0].id;
+
+    // Hash password
+    const saltRounds = 12;
+    const hashedPassword = await bcrypt.hash(password, saltRounds);
+
+    // Generate UUID for admin user
+    const adminUserId = uuidv4();
 
     // Create admin user profile in admin_users table
-    const { data: adminUserData, error: adminUserError } = await supabase
-      .from("admin_users")
-      .insert([
-        {
-          id: authData.user.id, // Use the auth user's ID
-          email,
-          name,
-          password, // Include password as required by schema
-          user_type,
-          role_id: adminRoleId, // Reference to the roles table
-          status: status || "active",
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        },
-      ])
-      .select();
+    const adminUserData = await db.insert("admin_users", {
+      id: adminUserId,
+      email,
+      name,
+      password: hashedPassword,
+      user_type,
+      role_id: adminRoleId,
+      status: status || "active",
+    });
 
-    if (adminUserError) {
-      throw new Error(adminUserError.message);
+    if (!adminUserData) {
+      throw new Error("Failed to create admin user");
     }
+
+    // Remove password from response
+    delete adminUserData.password;
 
     res.status(201).json({
       success: true,
-      data: adminUserData[0],
+      data: adminUserData,
     });
   } catch (error) {
     res.status(500).json({
@@ -212,14 +209,7 @@ exports.createAdminUser = async (req, res) => {
 // @access  Private/SuperAdmin
 exports.updateAdminUser = async (req, res) => {
   try {
-    // Check if the requesting user is super_admin
-    if (!req.user || req.user.user_type !== "super_admin") {
-      return res.status(403).json({
-        success: false,
-        message: "Access denied. Only super_admin can update admin users.",
-      });
-    }
-
+    // Authentication and authorization handled by middleware
     const updateData = { ...req.body };
 
     // Validate user_type if being updated - allow admin user types for admin_users table
@@ -241,106 +231,96 @@ exports.updateAdminUser = async (req, res) => {
       }
     }
 
-    // First, get the current admin user data to check what's being updated
-    const { data: currentAdminUser, error: getCurrentError } = await supabase
-      .from("admin_users")
-      .select("email")
-      .eq("id", req.params.id)
-      .single();
+    // First, check if admin user exists
+    const currentAdminQuery = await db.query(
+      "SELECT id, email FROM admin_users WHERE id = $1",
+      [req.params.id]
+    );
 
-    if (getCurrentError) {
+    if (currentAdminQuery.rows.length === 0) {
       return res.status(404).json({
         success: false,
         message: `Admin user not found with id of ${req.params.id}`,
-        error: getCurrentError.message,
       });
-    }
-
-    // Check if email is being updated and update Supabase Auth if needed
-    if (updateData.email && updateData.email !== currentAdminUser.email) {
-      try {
-        const { error: authUpdateError } =
-          await supabase.auth.admin.updateUserById(req.params.id, {
-            email: updateData.email,
-          });
-
-        if (authUpdateError) {
-          throw new Error(
-            `Failed to update auth email: ${authUpdateError.message}`
-          );
-        }
-      } catch (authError) {
-        return res.status(400).json({
-          success: false,
-          message: "Failed to update admin user authentication",
-          error: authError.message,
-        });
-      }
     }
 
     // Handle password update if provided
     if (updateData.password) {
-      try {
-        const { error: authPasswordError } =
-          await supabase.auth.admin.updateUserById(req.params.id, {
-            password: updateData.password,
-          });
-
-        if (authPasswordError) {
-          throw new Error(
-            `Failed to update auth password: ${authPasswordError.message}`
-          );
-        }
-      } catch (authError) {
-        return res.status(400).json({
-          success: false,
-          message: "Failed to update admin user password",
-          error: authError.message,
-        });
-      }
+      const saltRounds = 12;
+      updateData.password = await bcrypt.hash(updateData.password, saltRounds);
     }
 
     // If user_type is being updated, automatically assign the corresponding role
     if (updateData.user_type) {
       const roleName = updateData.user_type;
 
-      const { data: roleData, error: roleError } = await supabase
-        .from("roles")
-        .select("id")
-        .eq("name", roleName)
-        .single();
+      const roleQuery = await db.query("SELECT id FROM roles WHERE name = $1", [
+        roleName,
+      ]);
 
-      if (roleError) {
-        throw new Error(
-          `Role not found for user type ${updateData.user_type}. Error: ${roleError.message}`
-        );
+      if (roleQuery.rows.length === 0) {
+        return res.status(400).json({
+          success: false,
+          message: `Role not found for user type ${updateData.user_type}`,
+        });
       }
 
-      updateData.role_id = roleData.id;
+      updateData.role_id = roleQuery.rows[0].id;
     }
 
-    // Set updated_at timestamp
-    updateData.updated_at = new Date().toISOString();
+    // Remove undefined values and prepare update data
+    const cleanUpdateData = {};
+    Object.keys(updateData).forEach((key) => {
+      if (updateData[key] !== undefined) {
+        cleanUpdateData[key] = updateData[key];
+      }
+    });
 
-    // Update admin user in Supabase admin_users table
-    const { data: adminUser, error } = await supabase
-      .from("admin_users")
-      .update(updateData)
-      .eq("id", req.params.id)
-      .select("*, roles(name, description, permissions)")
-      .single();
+    // Update admin user in database
+    const updatedAdminUser = await db.update(
+      "admin_users",
+      req.params.id,
+      cleanUpdateData
+    );
 
-    if (error) {
+    if (!updatedAdminUser) {
       return res.status(404).json({
         success: false,
         message: `Admin user not found with id of ${req.params.id}`,
-        error: error.message,
       });
     }
 
+    // Get updated admin user with role information
+    const query = `
+      SELECT au.*, r.name as role_name, r.description as role_description, r.permissions as role_permissions
+      FROM admin_users au
+      LEFT JOIN roles r ON au.role_id = r.id
+      WHERE au.id = $1
+    `;
+
+    const result = await db.query(query, [req.params.id]);
+    const adminUser = result.rows[0];
+
+    const formattedUser = {
+      ...adminUser,
+      roles: adminUser.role_name
+        ? {
+            name: adminUser.role_name,
+            description: adminUser.role_description,
+            permissions: adminUser.role_permissions,
+          }
+        : null,
+    };
+
+    // Remove sensitive data
+    delete formattedUser.password;
+    delete formattedUser.role_name;
+    delete formattedUser.role_description;
+    delete formattedUser.role_permissions;
+
     res.status(200).json({
       success: true,
-      data: adminUser,
+      data: formattedUser,
     });
   } catch (error) {
     res.status(500).json({
@@ -356,59 +336,25 @@ exports.updateAdminUser = async (req, res) => {
 // @access  Private/SuperAdmin
 exports.deleteAdminUser = async (req, res) => {
   try {
-    // Check if the requesting user is super_admin
-    if (!req.user || req.user.user_type !== "super_admin") {
-      return res.status(403).json({
-        success: false,
-        message: "Access denied. Only super_admin can delete admin users.",
-      });
-    }
-
+    // Authentication and authorization handled by middleware
     // First check if admin user exists
-    const { data: adminUser, error: checkError } = await supabase
-      .from("admin_users")
-      .select("id, email")
-      .eq("id", req.params.id)
-      .single();
+    const adminUserQuery = await db.query(
+      "SELECT id, email FROM admin_users WHERE id = $1",
+      [req.params.id]
+    );
 
-    if (checkError || !adminUser) {
+    if (adminUserQuery.rows.length === 0) {
       return res.status(404).json({
         success: false,
         message: `Admin user not found with id of ${req.params.id}`,
       });
     }
 
-    // Get the user's auth ID from their email
-    const { data: authUser, error: authUserError } =
-      await supabase.auth.admin.listUsers();
-
-    if (authUserError) {
-      throw new Error(authUserError.message);
-    }
-
-    const matchedAuthUser = authUser.users.find(
-      (u) => u.email === adminUser.email
-    );
-
-    if (matchedAuthUser) {
-      // Delete admin user from Supabase Auth
-      const { error: authError } = await supabase.auth.admin.deleteUser(
-        matchedAuthUser.id
-      );
-
-      if (authError) {
-        throw new Error(authError.message);
-      }
-    }
-
     // Delete admin user from admin_users table
-    const { error: deleteError } = await supabase
-      .from("admin_users")
-      .delete()
-      .eq("id", req.params.id);
+    const deletedAdminUser = await db.delete("admin_users", req.params.id);
 
-    if (deleteError) {
-      throw new Error(deleteError.message);
+    if (!deletedAdminUser) {
+      throw new Error("Failed to delete admin user from admin_users table");
     }
 
     res.status(200).json({

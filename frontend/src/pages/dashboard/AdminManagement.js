@@ -11,6 +11,7 @@ import {
 } from "react-icons/ri";
 import { useAuth } from "../../context/AuthContext";
 import adminService from "../../services/adminService";
+import useDebounce from "../../hooks/useDebounce";
 
 const AdminManagement = () => {
   const { user } = useAuth();
@@ -28,6 +29,9 @@ const AdminManagement = () => {
   });
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
+
+  // Debounced search term to prevent excessive API calls
+  const debouncedSearchTerm = useDebounce(searchTerm, 500);
 
   // Check if current user is super_admin
   const isSuperAdmin = user?.user_type === "super_admin";
@@ -56,12 +60,11 @@ const AdminManagement = () => {
       if (statusFilter !== "all") {
         filters.status = statusFilter;
       }
-      if (searchTerm) {
-        filters.search = searchTerm;
+      if (debouncedSearchTerm) {
+        filters.search = debouncedSearchTerm;
       }
 
       const adminData = await adminService.getAdmins(filters);
-      console.log("Fetched admin users:", adminData);
 
       setAdmins(adminData);
     } catch (error) {
@@ -76,7 +79,7 @@ const AdminManagement = () => {
     } finally {
       setLoading(false);
     }
-  }, [statusFilter, searchTerm, isSuperAdmin]);
+  }, [statusFilter, debouncedSearchTerm, isSuperAdmin]);
 
   // Fetch admins on component mount
   useEffect(() => {
@@ -112,8 +115,6 @@ const AdminManagement = () => {
       };
 
       setFormData(formDataToSet);
-
-      console.log("Initialized form data:", formDataToSet);
     };
 
     // Initialize form immediately
@@ -129,7 +130,6 @@ const AdminManagement = () => {
       return;
     }
 
-    console.log("Opening edit modal for admin:", admin);
     setModalMode("edit");
     setCurrentAdmin(admin);
 
@@ -143,8 +143,6 @@ const AdminManagement = () => {
     };
 
     setFormData(formDataToSet);
-
-    console.log("Set form data for editing:", formDataToSet);
 
     // Show modal immediately
     setShowModal(true);
@@ -165,7 +163,6 @@ const AdminManagement = () => {
           status: formData.status,
         };
 
-        console.log("Creating new admin with data:", adminData);
         const newAdmin = await adminService.createAdmin(adminData);
 
         setAdmins([newAdmin, ...admins]);
@@ -184,12 +181,6 @@ const AdminManagement = () => {
           adminData.password = formData.password;
         }
 
-        console.log(
-          "Updating admin:",
-          currentAdmin.id,
-          "with data:",
-          adminData
-        );
         const updatedAdmin = await adminService.updateAdmin(
           currentAdmin.id,
           adminData
@@ -254,8 +245,10 @@ const AdminManagement = () => {
   };
 
   // Filter admins based on search term and status filter
+  // Use original searchTerm for immediate UI feedback, API uses debounced version
   const filteredAdmins = admins.filter((admin) => {
     const matchesSearch =
+      !searchTerm ||
       admin.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       admin.email.toLowerCase().includes(searchTerm.toLowerCase());
 

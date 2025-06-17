@@ -10,6 +10,8 @@ const {
   getFeaturedListings,
   getListingsByVendor,
   getListingsByCategory,
+  getBatchCategoryCounts,
+  getListingsCount,
 } = require("../controllers/listing.controller.new");
 
 /**
@@ -18,6 +20,13 @@ const {
  * @access  Public
  */
 router.get("/", getListings);
+
+/**
+ * @route   GET /api/listings/count
+ * @desc    Get listings count only (optimized for dashboard)
+ * @access  Private (vendors get their count, admins get all count)
+ */
+router.get("/count", protect, getListingsCount);
 
 /**
  * @route   GET /api/listings/featured
@@ -41,6 +50,13 @@ router.get("/vendor/:userId", getListingsByVendor);
 router.get("/category/:categoryId", getListingsByCategory);
 
 /**
+ * @route   POST /api/listings/category-counts
+ * @desc    Get listing counts for multiple categories in batch
+ * @access  Public
+ */
+router.post("/category-counts", getBatchCategoryCounts);
+
+/**
  * @route   GET /api/listings/:id
  * @desc    Get single listing
  * @access  Public
@@ -53,7 +69,6 @@ router.get("/:id", getListing);
  * @access  Private (vendors only)
  */
 router.post("/", protect, authorizeVendorCustomer("vendor"), createListing);
-// router.post("/", createListing);
 
 /**
  * @route   PUT /api/listings/:id
@@ -61,7 +76,6 @@ router.post("/", protect, authorizeVendorCustomer("vendor"), createListing);
  * @access  Private (owner or admin)
  */
 router.put("/:id", protect, updateListing);
-// router.put("/:id", updateListing);
 
 /**
  * @route   DELETE /api/listings/:id
@@ -69,6 +83,5 @@ router.put("/:id", protect, updateListing);
  * @access  Private (owner or admin)
  */
 router.delete("/:id", protect, deleteListing);
-// router.delete("/:id", deleteListing);
 
 module.exports = router;

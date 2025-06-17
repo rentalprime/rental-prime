@@ -2,9 +2,6 @@ import React, { createContext, useState, useContext, useEffect } from "react";
 import { toast } from "react-hot-toast";
 import authService from "../services/authService";
 
-// Add console logs for debugging in production
-console.log("AuthContext loaded");
-
 const AuthContext = createContext();
 
 export const useAuth = () => useContext(AuthContext);
@@ -37,15 +34,12 @@ export const AuthProvider = ({ children }) => {
   useEffect(() => {
     // Add a safety timeout to ensure loading state is cleared even if everything fails
     const safetyTimeout = setTimeout(() => {
-      console.log("Safety timeout triggered - forcing loading state to false");
       setLoading(false);
     }, 5000); // 5 seconds max for initial auth check
 
     // Initial check for user session
     const checkCurrentSession = async () => {
       try {
-        console.log("Starting initial auth check...");
-
         // Check for stored token and user data
         const token = localStorage.getItem("token");
         const storedUser = localStorage.getItem("user");
@@ -70,13 +64,7 @@ export const AuthProvider = ({ children }) => {
               if (isAdminUser) {
                 setUser(currentUser);
                 setIsAuthenticated(true);
-                console.log(
-                  "Initial auth check: User data loaded successfully"
-                );
               } else {
-                console.log(
-                  "User not authorized for admin dashboard, logging out"
-                );
                 // Clear unauthorized user data
                 localStorage.removeItem("token");
                 localStorage.removeItem("user");
@@ -86,9 +74,6 @@ export const AuthProvider = ({ children }) => {
               }
             } else {
               // Token might be invalid, use stored data as fallback but check authorization
-              console.warn(
-                "API returned null, checking stored user data authorization"
-              );
               const storedUserTable =
                 localStorage.getItem("userTable") || "users";
               const isAdminUser = isUserAllowedForAdmin(
@@ -100,9 +85,6 @@ export const AuthProvider = ({ children }) => {
                 setUser(userData);
                 setIsAuthenticated(true);
               } else {
-                console.log(
-                  "Stored user not authorized for admin dashboard, clearing data"
-                );
                 localStorage.removeItem("token");
                 localStorage.removeItem("user");
                 localStorage.removeItem("userTable");
@@ -111,10 +93,6 @@ export const AuthProvider = ({ children }) => {
               }
             }
           } catch (error) {
-            console.error(
-              "Error parsing stored user or API call failed:",
-              error
-            );
             // Clear invalid data
             localStorage.removeItem("token");
             localStorage.removeItem("user");
@@ -123,18 +101,15 @@ export const AuthProvider = ({ children }) => {
           }
         } else {
           // No stored session found, ensure user is logged out
-          console.log("No stored session found, user not authenticated");
           setUser(null);
           setIsAuthenticated(false);
         }
       } catch (error) {
-        console.error("Error checking current session:", error);
         // On error, ensure user is logged out to prevent infinite loading
         setUser(null);
         setIsAuthenticated(false);
       } finally {
         // Always set loading to false to ensure UI is not stuck
-        console.log("Auth check complete, setting loading to false");
         setLoading(false);
         clearTimeout(safetyTimeout);
       }
@@ -146,18 +121,14 @@ export const AuthProvider = ({ children }) => {
 
   // Login user with backend API
   const login = async (email, password) => {
-    console.log("Attempting login with:", email);
     setLoading(true);
 
     try {
       // Authenticate with backend API
       const result = await authService.signIn(email, password);
-      console.log("Authentication result:", result);
 
       // If we have a valid result with user data
       if (result && result.user) {
-        console.log("Setting user from auth response:", result.user);
-
         // Check if user is allowed to access admin dashboard
         const isAdminUser = isUserAllowedForAdmin(
           result.user,
@@ -165,10 +136,6 @@ export const AuthProvider = ({ children }) => {
         );
 
         if (!isAdminUser) {
-          console.log(
-            "User type not allowed for admin dashboard:",
-            result.user.user_type
-          );
           setLoading(false);
           throw new Error("UNAUTHORIZED_USER_TYPE");
         }
@@ -195,8 +162,6 @@ export const AuthProvider = ({ children }) => {
         throw new Error("Invalid credentials");
       }
     } catch (error) {
-      console.error("Login error:", error);
-
       // Don't show generic error message for unauthorized user types
       // The Login component will handle this specific error
       if (error.message !== "UNAUTHORIZED_USER_TYPE") {
@@ -223,12 +188,10 @@ export const AuthProvider = ({ children }) => {
 
       if (result.warning) {
         toast.success("Logged out locally. Server connection unavailable.");
-        console.warn(result.warning);
       } else {
         toast.success("Logged out successfully");
       }
     } catch (error) {
-      console.error("Logout error:", error);
       // Still clear user data even if logout API fails
       setSession(null);
       setUser(null);
@@ -254,7 +217,6 @@ export const AuthProvider = ({ children }) => {
       toast.success("Profile updated successfully");
       return true;
     } catch (error) {
-      console.error("Profile update error:", error);
       toast.error(error.message || "Failed to update profile");
       return false;
     }
@@ -267,7 +229,6 @@ export const AuthProvider = ({ children }) => {
       toast.success("Password reset instructions sent to your email");
       return true;
     } catch (error) {
-      console.error("Password reset error:", error);
       toast.error(error.message || "Failed to send password reset");
       return false;
     }

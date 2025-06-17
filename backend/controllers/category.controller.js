@@ -1,4 +1,4 @@
-const supabase = require("../config/supabase");
+const db = require("../config/database");
 const { v4: uuidv4 } = require("uuid");
 
 /**
@@ -18,76 +18,150 @@ exports.getCategories = async (req, res) => {
       orderDirection = "desc",
     } = req.query;
 
-    // Start building the query
-    let query = supabase.from("categories").select(`
-        *,
-        parent:parent_id(id, name, slug),
-        children:categories!parent_id(id, name, slug, status)
-      `);
+    // Build the base query with parent and children information
+    let queryText = `
+      SELECT
+        c.*,
+        p.id as parent_id_info, p.name as parent_name, p.slug as parent_slug,
+        COALESCE(
+          json_agg(
+            CASE WHEN ch.id IS NOT NULL THEN
+              json_build_object('id', ch.id, 'name', ch.name, 'slug', ch.slug, 'status', ch.status)
+            END
+          ) FILTER (WHERE ch.id IS NOT NULL),
+          '[]'::json
+        ) as children
+      FROM categories c
+      LEFT JOIN categories p ON c.parent_id = p.id
+      LEFT JOIN categories ch ON ch.parent_id = c.id
+    `;
+
+    const conditions = [];
+    const values = [];
+    let paramCount = 0;
 
     // Apply filters if provided
     if (status && status !== "all") {
-      query = query.eq("status", status);
+      paramCount++;
+      conditions.push(`c.status = $${paramCount}`);
+      values.push(status);
     }
 
     // Filter by parent category
     if (parent_id) {
       if (parent_id === "null" || parent_id === "root") {
-        query = query.is("parent_id", null);
+        conditions.push(`c.parent_id IS NULL`);
       } else {
-        query = query.eq("parent_id", parent_id);
+        paramCount++;
+        conditions.push(`c.parent_id = $${paramCount}`);
+        values.push(parent_id);
       }
     }
 
     // Search functionality
     if (search) {
-      query = query.or(
-        `name.ilike.%${search}%,description.ilike.%${search}%,slug.ilike.%${search}%`
+      paramCount++;
+      conditions.push(
+        `(c.name ILIKE $${paramCount} OR c.description ILIKE $${paramCount} OR c.slug ILIKE $${paramCount})`
       );
+      values.push(`%${search}%`);
     }
+
+    // Add WHERE clause if there are conditions
+    if (conditions.length > 0) {
+      queryText += ` WHERE ${conditions.join(" AND ")}`;
+    }
+
+    // Add GROUP BY
+    queryText += ` GROUP BY c.id, p.id, p.name, p.slug`;
 
     // Ordering
     const validOrderFields = ["name", "created_at", "updated_at", "status"];
     const orderField = validOrderFields.includes(orderBy)
       ? orderBy
       : "created_at";
-    query = query.order(orderField, { ascending: orderDirection === "asc" });
+    const direction = orderDirection === "asc" ? "ASC" : "DESC";
+    queryText += ` ORDER BY c.${orderField} ${direction}`;
 
     // Pagination
     if (limit) {
-      query = query.limit(parseInt(limit));
+      paramCount++;
+      queryText += ` LIMIT $${paramCount}`;
+      values.push(parseInt(limit));
     }
 
     if (offset) {
-      query = query.offset(parseInt(offset));
+      paramCount++;
+      queryText += ` OFFSET $${paramCount}`;
+      values.push(parseInt(offset));
     }
 
     // Execute query
-    const { data: categories, error } = await query;
+    const result = await db.query(queryText, values);
+    const categories = result.rows.map((row) => ({
+      ...row,
+      parent: row.parent_id_info
+        ? {
+            id: row.parent_id_info,
+            name: row.parent_name,
+            slug: row.parent_slug,
+          }
+        : null,
+      // Remove the separate parent fields
+      parent_id_info: undefined,
+      parent_name: undefined,
+      parent_slug: undefined,
+    }));
 
-    if (error) {
-      throw new Error(error.message);
+    // Get total count for pagination (simplified count query)
+    let countQuery = "SELECT COUNT(*) FROM categories c";
+    const countConditions = [];
+    const countValues = [];
+    let countParamCount = 0;
+
+    // Apply same filters for count
+    if (status && status !== "all") {
+      countParamCount++;
+      countConditions.push(`c.status = $${countParamCount}`);
+      countValues.push(status);
     }
 
-    // Get total count for pagination
-    const { count, error: countError } = await supabase
-      .from("categories")
-      .select("*", { count: "exact", head: true });
-
-    if (countError) {
-      throw new Error(countError.message);
+    if (parent_id) {
+      if (parent_id === "null" || parent_id === "root") {
+        countConditions.push(`c.parent_id IS NULL`);
+      } else {
+        countParamCount++;
+        countConditions.push(`c.parent_id = $${countParamCount}`);
+        countValues.push(parent_id);
+      }
     }
+
+    if (search) {
+      countParamCount++;
+      countConditions.push(
+        `(c.name ILIKE $${countParamCount} OR c.description ILIKE $${countParamCount} OR c.slug ILIKE $${countParamCount})`
+      );
+      countValues.push(`%${search}%`);
+    }
+
+    if (countConditions.length > 0) {
+      countQuery += ` WHERE ${countConditions.join(" AND ")}`;
+    }
+
+    const countResult = await db.query(countQuery, countValues);
+    const totalCount = parseInt(countResult.rows[0].count);
 
     res.status(200).json({
       success: true,
       count: categories.length,
-      total: count,
+      total: totalCount,
       data: categories,
       pagination: {
         limit: parseInt(limit),
         offset: parseInt(offset),
-        total: count,
-        pages: Math.ceil(count / parseInt(limit)),
+        total: totalCount,
+        pages: Math.ceil(totalCount / parseInt(limit)),
+        currentPage: Math.floor(parseInt(offset) / parseInt(limit)) + 1,
       },
     });
   } catch (error) {
@@ -108,24 +182,58 @@ exports.getCategory = async (req, res) => {
   try {
     const { id } = req.params;
 
-    const { data: category, error } = await supabase
-      .from("categories")
-      .select(
-        `
-        *,
-        parent:parent_id(id, name, slug, description),
-        children:categories!parent_id(id, name, slug, status, description, image_url)
-      `
-      )
-      .eq("id", id)
-      .single();
+    // Get category with parent and children information
+    const queryText = `
+      SELECT
+        c.*,
+        p.id as parent_id_info, p.name as parent_name, p.slug as parent_slug, p.description as parent_description,
+        COALESCE(
+          json_agg(
+            CASE WHEN ch.id IS NOT NULL THEN
+              json_build_object(
+                'id', ch.id,
+                'name', ch.name,
+                'slug', ch.slug,
+                'status', ch.status,
+                'description', ch.description,
+                'image_url', ch.image_url
+              )
+            END
+          ) FILTER (WHERE ch.id IS NOT NULL),
+          '[]'::json
+        ) as children
+      FROM categories c
+      LEFT JOIN categories p ON c.parent_id = p.id
+      LEFT JOIN categories ch ON ch.parent_id = c.id
+      WHERE c.id = $1
+      GROUP BY c.id, p.id, p.name, p.slug, p.description
+    `;
 
-    if (error) {
+    const result = await db.query(queryText, [id]);
+
+    if (result.rows.length === 0) {
       return res.status(404).json({
         success: false,
         message: `Category not found with id of ${id}`,
       });
     }
+
+    const category = {
+      ...result.rows[0],
+      parent: result.rows[0].parent_id_info
+        ? {
+            id: result.rows[0].parent_id_info,
+            name: result.rows[0].parent_name,
+            slug: result.rows[0].parent_slug,
+            description: result.rows[0].parent_description,
+          }
+        : null,
+      // Remove the separate parent fields
+      parent_id_info: undefined,
+      parent_name: undefined,
+      parent_slug: undefined,
+      parent_description: undefined,
+    };
 
     res.status(200).json({
       success: true,
@@ -174,13 +282,12 @@ exports.createCategory = async (req, res) => {
     }
 
     // Check if slug already exists
-    const { data: existingCategory, error: slugError } = await supabase
-      .from("categories")
-      .select("id")
-      .eq("slug", categorySlug)
-      .single();
+    const existingCategoryResult = await db.query(
+      "SELECT id FROM categories WHERE slug = $1",
+      [categorySlug]
+    );
 
-    if (existingCategory) {
+    if (existingCategoryResult.rows.length > 0) {
       return res.status(400).json({
         success: false,
         message: "Category with this slug already exists",
@@ -189,13 +296,12 @@ exports.createCategory = async (req, res) => {
 
     // Validate parent_id if provided
     if (parent_id) {
-      const { data: parentCategory, error: parentError } = await supabase
-        .from("categories")
-        .select("id")
-        .eq("id", parent_id)
-        .single();
+      const parentResult = await db.query(
+        "SELECT id FROM categories WHERE id = $1",
+        [parent_id]
+      );
 
-      if (parentError || !parentCategory) {
+      if (parentResult.rows.length === 0) {
         return res.status(400).json({
           success: false,
           message: "Invalid parent category ID",
@@ -204,8 +310,9 @@ exports.createCategory = async (req, res) => {
     }
 
     // Create category data
+    const categoryId = uuidv4();
     const categoryData = {
-      id: uuidv4(),
+      id: categoryId,
       name: name.trim(),
       description: description?.trim() || null,
       image_url: image_url || null,
@@ -216,21 +323,44 @@ exports.createCategory = async (req, res) => {
       updated_at: new Date().toISOString(),
     };
 
-    const { data: category, error } = await supabase
-      .from("categories")
-      .insert([categoryData])
-      .select(
-        `
-        *,
-        parent:parent_id(id, name, slug),
-        children:categories!parent_id(id, name, slug, status)
-      `
-      )
-      .single();
+    // Insert the category
+    const insertResult = await db.insert("categories", categoryData);
 
-    if (error) {
-      throw new Error(error.message);
-    }
+    // Get the created category with parent and children information
+    const queryText = `
+      SELECT
+        c.*,
+        p.id as parent_id_info, p.name as parent_name, p.slug as parent_slug,
+        COALESCE(
+          json_agg(
+            CASE WHEN ch.id IS NOT NULL THEN
+              json_build_object('id', ch.id, 'name', ch.name, 'slug', ch.slug, 'status', ch.status)
+            END
+          ) FILTER (WHERE ch.id IS NOT NULL),
+          '[]'::json
+        ) as children
+      FROM categories c
+      LEFT JOIN categories p ON c.parent_id = p.id
+      LEFT JOIN categories ch ON ch.parent_id = c.id
+      WHERE c.id = $1
+      GROUP BY c.id, p.id, p.name, p.slug
+    `;
+
+    const result = await db.query(queryText, [categoryId]);
+    const category = {
+      ...result.rows[0],
+      parent: result.rows[0].parent_id_info
+        ? {
+            id: result.rows[0].parent_id_info,
+            name: result.rows[0].parent_name,
+            slug: result.rows[0].parent_slug,
+          }
+        : null,
+      // Remove the separate parent fields
+      parent_id_info: undefined,
+      parent_name: undefined,
+      parent_slug: undefined,
+    };
 
     res.status(201).json({
       success: true,
@@ -256,23 +386,22 @@ exports.updateCategory = async (req, res) => {
     const { name, description, image_url, status, parent_id, slug } = req.body;
 
     // Check if category exists
-    const { data: existingCategory, error: checkError } = await supabase
-      .from("categories")
-      .select("*")
-      .eq("id", id)
-      .single();
+    const existingCategoryResult = await db.query(
+      "SELECT * FROM categories WHERE id = $1",
+      [id]
+    );
 
-    if (checkError || !existingCategory) {
+    if (existingCategoryResult.rows.length === 0) {
       return res.status(404).json({
         success: false,
         message: `Category not found with id of ${id}`,
       });
     }
 
+    const existingCategory = existingCategoryResult.rows[0];
+
     // Prepare update data
-    const updateData = {
-      updated_at: new Date().toISOString(),
-    };
+    const updateData = {};
 
     // Update name if provided
     if (name !== undefined) {
@@ -327,14 +456,12 @@ exports.updateCategory = async (req, res) => {
     // If we have a new slug, validate it's unique
     if (newSlug) {
       // Check if new slug already exists (excluding current category)
-      const { data: slugExists, error: slugError } = await supabase
-        .from("categories")
-        .select("id")
-        .eq("slug", newSlug)
-        .neq("id", id)
-        .single();
+      const slugExistsResult = await db.query(
+        "SELECT id FROM categories WHERE slug = $1 AND id != $2",
+        [newSlug, id]
+      );
 
-      if (slugExists) {
+      if (slugExistsResult.rows.length > 0) {
         return res.status(400).json({
           success: false,
           message: "Category with this slug already exists",
@@ -350,13 +477,12 @@ exports.updateCategory = async (req, res) => {
         updateData.parent_id = null;
       } else {
         // Validate parent_id exists
-        const { data: parentCategory, error: parentError } = await supabase
-          .from("categories")
-          .select("id")
-          .eq("id", parent_id)
-          .single();
+        const parentResult = await db.query(
+          "SELECT id FROM categories WHERE id = $1",
+          [parent_id]
+        );
 
-        if (parentError || !parentCategory) {
+        if (parentResult.rows.length === 0) {
           return res.status(400).json({
             success: false,
             message: "Invalid parent category ID",
@@ -376,22 +502,43 @@ exports.updateCategory = async (req, res) => {
     }
 
     // Update the category
-    const { data: category, error } = await supabase
-      .from("categories")
-      .update(updateData)
-      .eq("id", id)
-      .select(
-        `
-        *,
-        parent:parent_id(id, name, slug),
-        children:categories!parent_id(id, name, slug, status)
-      `
-      )
-      .single();
+    const updatedCategory = await db.update("categories", id, updateData);
 
-    if (error) {
-      throw new Error(error.message);
-    }
+    // Get the updated category with parent and children information
+    const queryText = `
+      SELECT
+        c.*,
+        p.id as parent_id_info, p.name as parent_name, p.slug as parent_slug,
+        COALESCE(
+          json_agg(
+            CASE WHEN ch.id IS NOT NULL THEN
+              json_build_object('id', ch.id, 'name', ch.name, 'slug', ch.slug, 'status', ch.status)
+            END
+          ) FILTER (WHERE ch.id IS NOT NULL),
+          '[]'::json
+        ) as children
+      FROM categories c
+      LEFT JOIN categories p ON c.parent_id = p.id
+      LEFT JOIN categories ch ON ch.parent_id = c.id
+      WHERE c.id = $1
+      GROUP BY c.id, p.id, p.name, p.slug
+    `;
+
+    const result = await db.query(queryText, [id]);
+    const category = {
+      ...result.rows[0],
+      parent: result.rows[0].parent_id_info
+        ? {
+            id: result.rows[0].parent_id_info,
+            name: result.rows[0].parent_name,
+            slug: result.rows[0].parent_slug,
+          }
+        : null,
+      // Remove the separate parent fields
+      parent_id_info: undefined,
+      parent_name: undefined,
+      parent_slug: undefined,
+    };
 
     res.status(200).json({
       success: true,
@@ -417,13 +564,12 @@ exports.deleteCategory = async (req, res) => {
     const { force = false } = req.query; // Optional force delete parameter
 
     // Check if category exists
-    const { data: existingCategory, error: checkError } = await supabase
-      .from("categories")
-      .select("*")
-      .eq("id", id)
-      .single();
+    const existingCategoryResult = await db.query(
+      "SELECT * FROM categories WHERE id = $1",
+      [id]
+    );
 
-    if (checkError || !existingCategory) {
+    if (existingCategoryResult.rows.length === 0) {
       return res.status(404).json({
         success: false,
         message: `Category not found with id of ${id}`,
@@ -431,14 +577,12 @@ exports.deleteCategory = async (req, res) => {
     }
 
     // Check if category has children
-    const { data: children, error: childrenError } = await supabase
-      .from("categories")
-      .select("id")
-      .eq("parent_id", id);
+    const childrenResult = await db.query(
+      "SELECT id FROM categories WHERE parent_id = $1",
+      [id]
+    );
 
-    if (childrenError) {
-      throw new Error(childrenError.message);
-    }
+    const children = childrenResult.rows;
 
     if (children && children.length > 0 && !force) {
       return res.status(400).json({
@@ -457,14 +601,7 @@ exports.deleteCategory = async (req, res) => {
     }
 
     // Delete the category
-    const { error: deleteError } = await supabase
-      .from("categories")
-      .delete()
-      .eq("id", id);
-
-    if (deleteError) {
-      throw new Error(deleteError.message);
-    }
+    await db.delete("categories", id);
 
     res.status(200).json({
       success: true,
@@ -485,14 +622,12 @@ exports.deleteCategory = async (req, res) => {
  */
 async function deleteRecursive(categoryId) {
   // Get children of this category
-  const { data: children, error: childrenError } = await supabase
-    .from("categories")
-    .select("id")
-    .eq("parent_id", categoryId);
+  const childrenResult = await db.query(
+    "SELECT id FROM categories WHERE parent_id = $1",
+    [categoryId]
+  );
 
-  if (childrenError) {
-    throw new Error(childrenError.message);
-  }
+  const children = childrenResult.rows;
 
   // Recursively delete children first
   if (children && children.length > 0) {
@@ -502,14 +637,7 @@ async function deleteRecursive(categoryId) {
   }
 
   // Delete this category
-  const { error: deleteError } = await supabase
-    .from("categories")
-    .delete()
-    .eq("id", categoryId);
-
-  if (deleteError) {
-    throw new Error(deleteError.message);
-  }
+  await db.delete("categories", categoryId);
 }
 
 /**
@@ -522,20 +650,18 @@ exports.getCategoryHierarchy = async (req, res) => {
     const { status = "active" } = req.query;
 
     // Get all categories
-    let query = supabase
-      .from("categories")
-      .select("*")
-      .order("name", { ascending: true });
+    let queryText = "SELECT * FROM categories";
+    const values = [];
 
     if (status && status !== "all") {
-      query = query.eq("status", status);
+      queryText += " WHERE status = $1";
+      values.push(status);
     }
 
-    const { data: categories, error } = await query;
+    queryText += " ORDER BY name ASC";
 
-    if (error) {
-      throw new Error(error.message);
-    }
+    const result = await db.query(queryText, values);
+    const categories = result.rows;
 
     // Build hierarchy tree
     const categoryMap = new Map();
@@ -580,24 +706,58 @@ exports.getCategoryBySlug = async (req, res) => {
   try {
     const { slug } = req.params;
 
-    const { data: category, error } = await supabase
-      .from("categories")
-      .select(
-        `
-        *,
-        parent:parent_id(id, name, slug, description),
-        children:categories!parent_id(id, name, slug, status, description, image_url)
-      `
-      )
-      .eq("slug", slug)
-      .single();
+    // Get category with parent and children information
+    const queryText = `
+      SELECT
+        c.*,
+        p.id as parent_id_info, p.name as parent_name, p.slug as parent_slug, p.description as parent_description,
+        COALESCE(
+          json_agg(
+            CASE WHEN ch.id IS NOT NULL THEN
+              json_build_object(
+                'id', ch.id,
+                'name', ch.name,
+                'slug', ch.slug,
+                'status', ch.status,
+                'description', ch.description,
+                'image_url', ch.image_url
+              )
+            END
+          ) FILTER (WHERE ch.id IS NOT NULL),
+          '[]'::json
+        ) as children
+      FROM categories c
+      LEFT JOIN categories p ON c.parent_id = p.id
+      LEFT JOIN categories ch ON ch.parent_id = c.id
+      WHERE c.slug = $1
+      GROUP BY c.id, p.id, p.name, p.slug, p.description
+    `;
 
-    if (error) {
+    const result = await db.query(queryText, [slug]);
+
+    if (result.rows.length === 0) {
       return res.status(404).json({
         success: false,
         message: `Category not found with slug: ${slug}`,
       });
     }
+
+    const category = {
+      ...result.rows[0],
+      parent: result.rows[0].parent_id_info
+        ? {
+            id: result.rows[0].parent_id_info,
+            name: result.rows[0].parent_name,
+            slug: result.rows[0].parent_slug,
+            description: result.rows[0].parent_description,
+          }
+        : null,
+      // Remove the separate parent fields
+      parent_id_info: undefined,
+      parent_name: undefined,
+      parent_slug: undefined,
+      parent_description: undefined,
+    };
 
     res.status(200).json({
       success: true,
@@ -620,41 +780,27 @@ exports.getCategoryBySlug = async (req, res) => {
 exports.getCategoryStats = async (req, res) => {
   try {
     // Get total categories count
-    const { count: totalCategories, error: totalError } = await supabase
-      .from("categories")
-      .select("*", { count: "exact", head: true });
-
-    if (totalError) {
-      throw new Error(totalError.message);
-    }
+    const totalResult = await db.query("SELECT COUNT(*) FROM categories");
+    const totalCategories = parseInt(totalResult.rows[0].count);
 
     // Get active categories count
-    const { count: activeCategories, error: activeError } = await supabase
-      .from("categories")
-      .select("*", { count: "exact", head: true })
-      .eq("status", "active");
-
-    if (activeError) {
-      throw new Error(activeError.message);
-    }
+    const activeResult = await db.query(
+      "SELECT COUNT(*) FROM categories WHERE status = $1",
+      ["active"]
+    );
+    const activeCategories = parseInt(activeResult.rows[0].count);
 
     // Get root categories count
-    const { count: rootCategories, error: rootError } = await supabase
-      .from("categories")
-      .select("*", { count: "exact", head: true })
-      .is("parent_id", null);
-
-    if (rootError) {
-      throw new Error(rootError.message);
-    }
+    const rootResult = await db.query(
+      "SELECT COUNT(*) FROM categories WHERE parent_id IS NULL"
+    );
+    const rootCategories = parseInt(rootResult.rows[0].count);
 
     // Get categories with children count
-    const { data: categoriesWithChildren, error: childrenError } =
-      await supabase.from("categories").select("id, parent_id");
-
-    if (childrenError) {
-      throw new Error(childrenError.message);
-    }
+    const categoriesResult = await db.query(
+      "SELECT id, parent_id FROM categories"
+    );
+    const categoriesWithChildren = categoriesResult.rows;
 
     const parentIds = new Set(
       categoriesWithChildren

@@ -1,4 +1,4 @@
-const supabase = require("../config/supabase");
+const db = require("../config/database");
 
 /**
  * Check if vendor has an active plan
@@ -8,50 +8,60 @@ const supabase = require("../config/supabase");
 async function checkVendorActivePlan(userId) {
   try {
     // Get vendor's active subscription with plan details
-    const { data: subscription, error: subscriptionError } = await supabase
-      .from("user_subscriptions")
-      .select(
-        `
-        *,
-        plans (
-          id,
-          name,
-          price,
-          interval,
-          features,
-          status
-        )
-      `
-      )
-      .eq("user_id", userId)
-      .eq("is_active", true)
-      .gte("end_date", new Date().toISOString()) // Check if subscription hasn't expired
-      .single();
+    const query = `
+      SELECT
+        us.*,
+        p.id as plan_id, p.name as plan_name, p.price as plan_price,
+        p.interval as plan_interval, p.features as plan_features, p.status as plan_status
+      FROM user_subscriptions us
+      LEFT JOIN plans p ON us.plan_id = p.id
+      WHERE us.user_id = $1
+        AND us.is_active = true
+        AND us.end_date >= $2
+      LIMIT 1
+    `;
 
-    if (subscriptionError) {
-      // If no subscription found, return false
-      if (subscriptionError.code === "PGRST116") {
-        return {
-          hasActivePlan: false,
-          plan: null,
-          subscription: null,
-          error: null,
-        };
-      }
+    const result = await db.query(query, [userId, new Date().toISOString()]);
 
+    if (result.rows.length === 0) {
       return {
         hasActivePlan: false,
         plan: null,
         subscription: null,
-        error: subscriptionError.message,
+        error: null,
       };
     }
 
+    const row = result.rows[0];
+
+    // Reconstruct the subscription and plan objects
+    const subscription = {
+      id: row.id,
+      user_id: row.user_id,
+      plan_id: row.plan_id,
+      is_active: row.is_active,
+      start_date: row.start_date,
+      end_date: row.end_date,
+      created_at: row.created_at,
+      updated_at: row.updated_at,
+    };
+
+    const plan = row.plan_id
+      ? {
+          id: row.plan_id,
+          name: row.plan_name,
+          price: row.plan_price,
+          interval: row.plan_interval,
+          features: row.plan_features,
+          status: row.plan_status,
+        }
+      : null;
+
     // Check if plan is active
-    if (!subscription.plans || subscription.plans.status !== "active") {
+    if (!plan || plan.status !== "active") {
       return {
         hasActivePlan: false,
-        plan: subscription.plans,
+        plan: plan,
         subscription: subscription,
         error: "Plan is not active",
       };
@@ -59,7 +69,7 @@ async function checkVendorActivePlan(userId) {
 
     return {
       hasActivePlan: true,
-      plan: subscription.plans,
+      plan: plan,
       subscription: subscription,
       error: null,
     };
@@ -135,37 +145,18 @@ function getPlanFeaturedLimits(plan) {
 async function countVendorListings(userId) {
   try {
     // Count total active listings
-    const { count: totalListings, error: totalError } = await supabase
-      .from("listings")
-      .select("*", { count: "exact", head: true })
-      .eq("owner_id", userId)
-      .eq("owner_type", "user")
-      .in("status", ["active", "pending"]); // Count both active and pending listings
-
-    if (totalError) {
-      return {
-        totalListings: 0,
-        featuredListings: 0,
-        error: totalError.message,
-      };
-    }
+    const totalResult = await db.query(
+      "SELECT COUNT(*) FROM listings WHERE owner_id = $1 AND owner_type = 'user' AND status IN ('active', 'pending')",
+      [userId]
+    );
+    const totalListings = parseInt(totalResult.rows[0].count);
 
     // Count featured listings
-    const { count: featuredListings, error: featuredError } = await supabase
-      .from("listings")
-      .select("*", { count: "exact", head: true })
-      .eq("owner_id", userId)
-      .eq("owner_type", "user")
-      .eq("is_featured", true)
-      .in("status", ["active", "pending"]);
-
-    if (featuredError) {
-      return {
-        totalListings: totalListings || 0,
-        featuredListings: 0,
-        error: featuredError.message,
-      };
-    }
+    const featuredResult = await db.query(
+      "SELECT COUNT(*) FROM listings WHERE owner_id = $1 AND owner_type = 'user' AND is_featured = true AND status IN ('active', 'pending')",
+      [userId]
+    );
+    const featuredListings = parseInt(featuredResult.rows[0].count);
 
     return {
       totalListings: totalListings || 0,

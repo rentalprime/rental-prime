@@ -5,7 +5,8 @@
 
 class VendorListingService {
   constructor() {
-    this.baseUrl = "https://rental-prime-backend-8ilt.onrender.com/api/listings";
+    this.baseUrl =
+      "https://rental-prime-backend-8ilt.onrender.com/api/listings";
   }
 
   /**
@@ -15,30 +16,26 @@ class VendorListingService {
    */
   async getVendorListings(filters = {}) {
     try {
-      console.log("Fetching vendor listings for dashboard...");
-
       // Build query parameters
       const queryParams = new URLSearchParams();
-      
+
       // Add filters if provided
       if (filters.status && filters.status !== "all") {
         queryParams.append("status", filters.status);
       }
-      
+
       if (filters.limit) {
         queryParams.append("limit", filters.limit);
       }
-      
+
       if (filters.offset) {
         queryParams.append("offset", filters.offset);
       }
 
       // Build the full URL
-      const fullUrl = queryParams.toString() 
+      const fullUrl = queryParams.toString()
         ? `${this.baseUrl}?${queryParams.toString()}`
         : this.baseUrl;
-
-      console.log("Fetching vendor listings from URL:", fullUrl);
 
       const response = await fetch(fullUrl, {
         method: "GET",
@@ -47,8 +44,6 @@ class VendorListingService {
           Authorization: `Bearer ${localStorage.getItem("token")}`,
         },
       });
-
-      console.log("Response status:", response.status);
 
       if (!response.ok) {
         const errorData = await response.json();
@@ -62,7 +57,6 @@ class VendorListingService {
       }
 
       const data = await response.json();
-      console.log("Vendor listings API response:", data);
 
       // Return the response in expected format
       if (data.success && data.data) {
@@ -80,7 +74,6 @@ class VendorListingService {
         success: false,
       };
     } catch (error) {
-      console.error("Error fetching vendor listings:", error);
       return {
         data: [],
         count: 0,
@@ -96,12 +89,26 @@ class VendorListingService {
    */
   async getVendorListingsCount() {
     try {
-      console.log("Fetching vendor listings count for dashboard...");
+      // Use the optimized count endpoint
+      const countUrl = `${this.baseUrl}/count`;
 
-      // Fetch with minimal data - just need the count
-      const response = await this.getVendorListings({ limit: 1 });
-      
-      return response.count || 0;
+      const response = await fetch(countUrl, {
+        method: "GET",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${localStorage.getItem("token")}`,
+        },
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        console.error("API error fetching vendor listings count:", errorData);
+        return 0;
+      }
+
+      const data = await response.json();
+
+      return data.count || 0;
     } catch (error) {
       console.error("Error fetching vendor listings count:", error);
       return 0;

@@ -34,7 +34,6 @@ const RoleManagement = () => {
   const fetchRoles = async () => {
     try {
       setLoading(true);
-      console.log("Fetching roles from Supabase...");
       const data = await roleService.getAllRoles();
 
       if (data && data.length > 0) {
@@ -45,7 +44,6 @@ const RoleManagement = () => {
         }));
 
         setRoles(processedData);
-        console.log("Roles loaded successfully:", processedData);
       }
     } catch (error) {
       console.error("Error fetching roles:", error);
@@ -107,7 +105,6 @@ const RoleManagement = () => {
     try {
       if (modalMode === "add") {
         // Add role
-        console.log("Creating new role:", roleData);
         const newRole = await roleService.createRole(roleData);
 
         if (newRole) {
@@ -131,7 +128,6 @@ const RoleManagement = () => {
           roleData.is_system_role = true; // Preserve system role flag
         }
 
-        console.log("Updating role:", roleData);
         const updatedRole = await roleService.updateRole(
           currentRole.id,
           roleData
@@ -180,7 +176,6 @@ const RoleManagement = () => {
       )
     ) {
       try {
-        console.log("Deleting role:", roleId);
         await roleService.deleteRole(roleId);
         setRoles(roles.filter((role) => role.id !== roleId));
         toast.success("Role deleted successfully");

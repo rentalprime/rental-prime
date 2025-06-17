@@ -1,58 +1,57 @@
-import React, { useState, useEffect } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
-import { useAuth } from '../../context/AuthContext';
-import { toast } from 'react-hot-toast';
-import authService from '../../services/authService';
+import React, { useState, useEffect } from "react";
+import { Link, useNavigate } from "react-router-dom";
+import { useAuth } from "../../context/AuthContext";
+import { toast } from "react-hot-toast";
+import authService from "../../services/authService";
 
 const Signup = () => {
   const [formData, setFormData] = useState({
-    name: '',
-    email: '',
-    password: '',
-    confirmPassword: ''
+    name: "",
+    email: "",
+    password: "",
+    confirmPassword: "",
   });
   const [loading, setLoading] = useState(false);
   const { isAuthenticated } = useAuth();
   const navigate = useNavigate();
-  
+
   // Redirect if already authenticated
   useEffect(() => {
     if (isAuthenticated) {
-      navigate('/dashboard');
+      navigate("/dashboard");
     }
   }, [isAuthenticated, navigate]);
 
   const handleChange = (e) => {
     setFormData({
       ...formData,
-      [e.target.name]: e.target.value
+      [e.target.name]: e.target.value,
     });
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    
+
     // Validate form
     if (formData.password !== formData.confirmPassword) {
-      toast.error('Passwords do not match');
+      toast.error("Passwords do not match");
       return;
     }
-    
+
     setLoading(true);
-    
+
     try {
-      // Call signup method from authService
+      // Call signup method from authService - creates super_admin only
       await authService.signUp(formData.email, formData.password, {
         name: formData.name,
-        role: 'user',
-        status: 'active'
+        status: "active",
       });
-      
-      toast.success('Account created successfully! Please log in.');
-      navigate('/login');
+
+      toast.success("Super admin account created successfully! Please log in.");
+      navigate("/login");
     } catch (error) {
-      console.error('Signup error:', error);
-      toast.error(error.message || 'Failed to create account');
+      console.error("Signup error:", error);
+      toast.error(error.message || "Failed to create account");
     } finally {
       setLoading(false);
     }
@@ -60,11 +59,16 @@ const Signup = () => {
 
   return (
     <div>
-      <h2 className="text-2xl font-bold text-center text-gray-800 mb-6">Create an Account</h2>
-      
+      <h2 className="text-2xl font-bold text-center text-gray-800 mb-6">
+        Create Super Admin Account
+      </h2>
+
       <form onSubmit={handleSubmit}>
         <div className="mb-4">
-          <label htmlFor="name" className="block text-sm font-medium text-gray-700 mb-1">
+          <label
+            htmlFor="name"
+            className="block text-sm font-medium text-gray-700 mb-1"
+          >
             Full Name
           </label>
           <input
@@ -77,9 +81,12 @@ const Signup = () => {
             required
           />
         </div>
-        
+
         <div className="mb-4">
-          <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-1">
+          <label
+            htmlFor="email"
+            className="block text-sm font-medium text-gray-700 mb-1"
+          >
             Email Address
           </label>
           <input
@@ -92,9 +99,12 @@ const Signup = () => {
             required
           />
         </div>
-        
+
         <div className="mb-4">
-          <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-1">
+          <label
+            htmlFor="password"
+            className="block text-sm font-medium text-gray-700 mb-1"
+          >
             Password
           </label>
           <input
@@ -108,9 +118,12 @@ const Signup = () => {
             minLength={6}
           />
         </div>
-        
+
         <div className="mb-6">
-          <label htmlFor="confirmPassword" className="block text-sm font-medium text-gray-700 mb-1">
+          <label
+            htmlFor="confirmPassword"
+            className="block text-sm font-medium text-gray-700 mb-1"
+          >
             Confirm Password
           </label>
           <input
@@ -124,20 +137,23 @@ const Signup = () => {
             minLength={6}
           />
         </div>
-        
+
         <button
           type="submit"
           className="w-full py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500"
           disabled={loading}
         >
-          {loading ? 'Creating Account...' : 'Sign Up'}
+          {loading ? "Creating Account..." : "Sign Up"}
         </button>
       </form>
-      
+
       <div className="mt-4 text-center">
         <p className="text-sm text-gray-600">
-          Already have an account?{' '}
-          <Link to="/login" className="font-medium text-primary-600 hover:text-primary-500">
+          Already have an account?{" "}
+          <Link
+            to="/login"
+            className="font-medium text-primary-600 hover:text-primary-500"
+          >
             Sign in
           </Link>
         </p>

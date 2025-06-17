@@ -1,9 +1,6 @@
-const supabase = require("../config/supabase");
-const { createClient } = require("@supabase/supabase-js");
-const config = require("../config/config");
-
-// Initialize Supabase client
-const supabaseClient = createClient(config.supabaseUrl, config.supabaseKey);
+const db = require("../config/database");
+const bcrypt = require("bcryptjs");
+const { v4: uuidv4 } = require("uuid");
 
 // @desc    Get all users
 // @route   GET /api/users
@@ -11,22 +8,58 @@ const supabaseClient = createClient(config.supabaseUrl, config.supabaseKey);
 exports.getUsers = async (req, res) => {
   try {
     // Get all users with their role information
-    const {
-      data: users,
-      error,
-      count,
-    } = await supabase
-      .from("users")
-      .select("*, roles(name, description)", { count: "exact" });
+    const query = `
+      SELECT u.*, r.name as role_name, r.description as role_description
+      FROM users u
+      LEFT JOIN roles r ON u.role_id = r.id
+      ORDER BY u.created_at DESC
+    `;
 
-    if (error) {
-      throw new Error(error.message);
-    }
+    const result = await db.query(query);
+    const users = result.rows.map((user) => ({
+      ...user,
+      roles: user.role_name
+        ? {
+            name: user.role_name,
+            description: user.role_description,
+          }
+        : null,
+    }));
+
+    // Remove sensitive data
+    users.forEach((user) => {
+      delete user.password;
+      delete user.role_name;
+      delete user.role_description;
+    });
+
+    res.status(200).json({
+      success: true,
+      count: users.length,
+      data: users,
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: "Server Error",
+      error: error.message,
+    });
+  }
+};
+
+// @desc    Get users count only (optimized for dashboard)
+// @route   GET /api/users/count
+// @access  Private/Admin
+exports.getUsersCount = async (req, res) => {
+  try {
+    // Get only the count for better performance
+    const query = `SELECT COUNT(*) as total FROM users`;
+    const result = await db.query(query);
+    const count = parseInt(result.rows[0].total);
 
     res.status(200).json({
       success: true,
       count: count,
-      data: users,
     });
   } catch (error) {
     res.status(500).json({
@@ -42,22 +75,41 @@ exports.getUsers = async (req, res) => {
 // @access  Private/Admin
 exports.getUser = async (req, res) => {
   try {
-    const { data: user, error } = await supabase
-      .from("users")
-      .select("*, roles(name, description)")
-      .eq("id", req.params.id)
-      .single();
+    const query = `
+      SELECT u.*, r.name as role_name, r.description as role_description
+      FROM users u
+      LEFT JOIN roles r ON u.role_id = r.id
+      WHERE u.id = $1
+    `;
 
-    if (error) {
+    const result = await db.query(query, [req.params.id]);
+
+    if (result.rows.length === 0) {
       return res.status(404).json({
         success: false,
         message: `User not found with id of ${req.params.id}`,
       });
     }
 
+    const user = result.rows[0];
+    const formattedUser = {
+      ...user,
+      roles: user.role_name
+        ? {
+            name: user.role_name,
+            description: user.role_description,
+          }
+        : null,
+    };
+
+    // Remove sensitive data
+    delete formattedUser.password;
+    delete formattedUser.role_name;
+    delete formattedUser.role_description;
+
     res.status(200).json({
       success: true,
-      data: user,
+      data: formattedUser,
     });
   } catch (error) {
     res.status(500).json({
@@ -75,6 +127,14 @@ exports.createUser = async (req, res) => {
   try {
     const { name, email, password, status, user_type, role_id } = req.body;
 
+    // Validate required fields
+    if (!name || !email || !password) {
+      return res.status(400).json({
+        success: false,
+        message: "Please provide name, email, and password",
+      });
+    }
+
     // Validate user_type - only allow vendor and customer for users table
     if (!user_type || !["vendor", "customer"].includes(user_type)) {
       return res.status(400).json({
@@ -84,18 +144,13 @@ exports.createUser = async (req, res) => {
       });
     }
 
-    // Check if user already exists in Supabase
-    const { data: existingUsers, error: checkError } = await supabase
-      .from("users")
-      .select("email")
-      .eq("email", email)
-      .limit(1);
+    // Check if user already exists
+    const existingUserQuery = await db.query(
+      "SELECT email FROM users WHERE email = $1 LIMIT 1",
+      [email]
+    );
 
-    if (checkError) {
-      throw new Error(checkError.message);
-    }
-
-    if (existingUsers && existingUsers.length > 0) {
+    if (existingUserQuery.rows.length > 0) {
       return res.status(400).json({
         success: false,
         message: "User already exists",
@@ -105,61 +160,49 @@ exports.createUser = async (req, res) => {
     // If role_id is not provided, get the appropriate role based on user_type
     let userRoleId = role_id;
     if (!userRoleId) {
-      // Map user_type directly to role name (they now match)
       const roleName = user_type || "customer";
+      const roleQuery = await db.query("SELECT id FROM roles WHERE name = $1", [
+        roleName,
+      ]);
 
-      const { data: roleData, error: roleError } = await supabase
-        .from("roles")
-        .select("id")
-        .eq("name", roleName)
-        .single();
-
-      if (roleError) {
-        throw new Error(
-          `Role not found for user type ${user_type}. Error: ${roleError.message}`
-        );
+      if (roleQuery.rows.length === 0) {
+        return res.status(400).json({
+          success: false,
+          message: `Role not found for user type ${user_type}`,
+        });
       }
 
-      userRoleId = roleData.id;
+      userRoleId = roleQuery.rows[0].id;
     }
 
-    // Create user in Supabase Auth
-    const { data: authData, error: authError } =
-      await supabase.auth.admin.createUser({
-        email,
-        password, // In production, this should be properly hashed
-        email_confirm: true,
-      });
+    // Hash password
+    const saltRounds = 12;
+    const hashedPassword = await bcrypt.hash(password, saltRounds);
 
-    if (authError) {
-      throw new Error(authError.message);
-    }
+    // Generate UUID for user
+    const userId = uuidv4();
 
     // Create user profile in users table
-    const { data: userData, error: userError } = await supabase
-      .from("users")
-      .insert([
-        {
-          id: authData.user.id, // Use the auth user's ID
-          email,
-          name, // Store full name in name field
-          password, // Include password as required by schema
-          user_type, // Store the specific user type
-          role_id: userRoleId, // Reference to the roles table
-          status: status || "active",
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        },
-      ])
-      .select();
+    const userData = await db.insert("users", {
+      id: userId,
+      email,
+      name,
+      password: hashedPassword,
+      user_type,
+      role_id: userRoleId,
+      status: status || "active",
+    });
 
-    if (userError) {
-      throw new Error(userError.message);
+    if (!userData) {
+      throw new Error("Failed to create user");
     }
+
+    // Remove password from response
+    delete userData.password;
 
     res.status(201).json({
       success: true,
-      data: userData[0],
+      data: userData,
     });
   } catch (error) {
     res.status(500).json({
@@ -189,87 +232,76 @@ exports.updateUser = async (req, res) => {
       });
     }
 
-    // First, get the current user data to check what's being updated
-    const { data: currentUser, error: getCurrentError } = await supabase
-      .from("users")
-      .select("email")
-      .eq("id", req.params.id)
-      .single();
+    // First, check if user exists
+    const currentUserQuery = await db.query(
+      "SELECT id, email FROM users WHERE id = $1",
+      [req.params.id]
+    );
 
-    if (getCurrentError) {
+    if (currentUserQuery.rows.length === 0) {
       return res.status(404).json({
         success: false,
         message: `User not found with id of ${req.params.id}`,
-        error: getCurrentError.message,
       });
-    }
-
-    // Check if email is being updated and update Supabase Auth if needed
-    if (updateData.email && updateData.email !== currentUser.email) {
-      try {
-        const { error: authUpdateError } =
-          await supabase.auth.admin.updateUserById(req.params.id, {
-            email: updateData.email,
-          });
-
-        if (authUpdateError) {
-          throw new Error(
-            `Failed to update auth email: ${authUpdateError.message}`
-          );
-        }
-      } catch (authError) {
-        return res.status(400).json({
-          success: false,
-          message: "Failed to update user authentication",
-          error: authError.message,
-        });
-      }
     }
 
     // Handle password update if provided
     if (updateData.password) {
-      try {
-        const { error: authPasswordError } =
-          await supabase.auth.admin.updateUserById(req.params.id, {
-            password: updateData.password,
-          });
-
-        if (authPasswordError) {
-          throw new Error(
-            `Failed to update auth password: ${authPasswordError.message}`
-          );
-        }
-      } catch (authError) {
-        return res.status(400).json({
-          success: false,
-          message: "Failed to update user password",
-          error: authError.message,
-        });
-      }
+      const saltRounds = 12;
+      updateData.password = await bcrypt.hash(updateData.password, saltRounds);
     }
 
-    // Set updated_at timestamp
-    updateData.updated_at = new Date().toISOString();
+    // Remove undefined values and prepare update data
+    const cleanUpdateData = {};
+    Object.keys(updateData).forEach((key) => {
+      if (updateData[key] !== undefined) {
+        cleanUpdateData[key] = updateData[key];
+      }
+    });
 
-    // Update user in Supabase users table
-    const { data: user, error } = await supabase
-      .from("users")
-      .update(updateData)
-      .eq("id", req.params.id)
-      .select("*, roles(name, description)")
-      .single();
+    // Update user in database
+    const updatedUser = await db.update(
+      "users",
+      req.params.id,
+      cleanUpdateData
+    );
 
-    if (error) {
+    if (!updatedUser) {
       return res.status(404).json({
         success: false,
         message: `User not found with id of ${req.params.id}`,
-        error: error.message,
       });
     }
 
+    // Get updated user with role information
+    const query = `
+      SELECT u.*, r.name as role_name, r.description as role_description
+      FROM users u
+      LEFT JOIN roles r ON u.role_id = r.id
+      WHERE u.id = $1
+    `;
+
+    const result = await db.query(query, [req.params.id]);
+    const user = result.rows[0];
+
+    const formattedUser = {
+      ...user,
+      roles: user.role_name
+        ? {
+            name: user.role_name,
+            description: user.role_description,
+          }
+        : null,
+    };
+
+    // Remove sensitive data
+    delete formattedUser.password;
+    delete formattedUser.role_name;
+    delete formattedUser.role_description;
+
     res.status(200).json({
       success: true,
-      data: user,
+      data: formattedUser,
     });
   } catch (error) {
     res.status(500).json({
@@ -286,43 +318,23 @@ exports.updateUser = async (req, res) => {
 exports.deleteUser = async (req, res) => {
   try {
     // First check if user exists in users table
-    const { data: user, error: checkError } = await supabase
-      .from("users")
-      .select("id, email")
-      .eq("id", req.params.id)
-      .single();
+    const userQuery = await db.query(
+      "SELECT id, email FROM users WHERE id = $1",
+      [req.params.id]
+    );
 
-    if (checkError || !user) {
+    if (userQuery.rows.length === 0) {
       return res.status(404).json({
         success: false,
         message: `User not found with id of ${req.params.id}`,
       });
     }
 
-    // Delete user from Supabase Auth first
-    // The user ID in the users table should match the auth user ID
-    const { error: authError } = await supabase.auth.admin.deleteUser(
-      req.params.id
-    );
-
-    if (authError) {
-      // Log the auth error but don't fail the entire operation
-      // The user might not exist in auth but still exist in users table
-      console.warn(
-        `Warning: Could not delete user from auth: ${authError.message}`
-      );
-    }
-
     // Delete user from users table
-    const { error: deleteError } = await supabase
-      .from("users")
-      .delete()
-      .eq("id", req.params.id);
+    const deletedUser = await db.delete("users", req.params.id);
 
-    if (deleteError) {
-      throw new Error(
-        `Failed to delete user from users table: ${deleteError.message}`
-      );
+    if (!deletedUser) {
+      throw new Error("Failed to delete user from users table");
     }
 
     res.status(200).json({
@@ -338,19 +350,18 @@ exports.deleteUser = async (req, res) => {
     });
   }
 };
+
 exports.getUserType = async (userId) => {
   try {
-    const { data: user, error } = await supabase
-      .from("users")
-      .select("user_type")
-      .eq("id", userId)
-      .single();
+    const result = await db.query("SELECT user_type FROM users WHERE id = $1", [
+      userId,
+    ]);
 
-    if (error || !user) {
+    if (result.rows.length === 0) {
       throw new Error(`User not found with id of ${userId}`);
     }
 
-    return user.user_type;
+    return result.rows[0].user_type;
   } catch (error) {
     throw new Error(error.message);
   }

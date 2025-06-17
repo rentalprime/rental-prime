@@ -20,7 +20,6 @@ class AuthService {
 
       throw new Error("Signup failed");
     } catch (error) {
-      console.error("Error during sign up:", error);
       throw error;
     }
   }
@@ -32,8 +31,6 @@ class AuthService {
         email,
         password,
       });
-
-      console.log("Backend API response:", response);
 
       // Handle the response format from our backend
       if (response.success && response.data) {
@@ -52,7 +49,6 @@ class AuthService {
 
       throw new Error("Login failed");
     } catch (error) {
-      console.error("Error during sign in:", error);
       throw error;
     }
   }
@@ -64,10 +60,7 @@ class AuthService {
       try {
         await apiClient.get("/auth/logout");
       } catch (backendError) {
-        console.warn(
-          "Backend logout attempt failed (non-critical):",
-          backendError
-        );
+        // Backend logout attempt failed (non-critical)
       }
 
       // Clear local storage
@@ -77,7 +70,6 @@ class AuthService {
 
       return { success: true };
     } catch (error) {
-      console.error("Logout error:", error);
       // Still clear local storage even if API call fails
       localStorage.removeItem("token");
       localStorage.removeItem("user");
@@ -97,7 +89,6 @@ class AuthService {
       const token = localStorage.getItem("token");
 
       if (!token) {
-        console.warn("No token found in localStorage");
         return null;
       }
 
@@ -109,13 +100,12 @@ class AuthService {
           return response.data;
         }
       } catch (apiError) {
-        console.error("Backend API getCurrentUser failed:", apiError);
+        // Backend API getCurrentUser failed
       }
 
       // If API call fails, return null
       return null;
     } catch (error) {
-      console.error("Error getting current user:", error);
       // Instead of throwing, return null to prevent app from crashing
       return null;
     }
@@ -134,7 +124,6 @@ class AuthService {
 
       throw new Error("Password reset failed");
     } catch (error) {
-      console.error("Error during password reset:", error);
       throw error;
     }
   }
@@ -152,7 +141,6 @@ class AuthService {
 
       throw new Error("Password update failed");
     } catch (error) {
-      console.error("Error updating password:", error);
       throw error;
     }
   }
@@ -168,7 +156,6 @@ class AuthService {
 
       throw new Error("Profile update failed");
     } catch (error) {
-      console.error("Error updating profile:", error);
       throw error;
     }
   }
