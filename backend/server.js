@@ -4,6 +4,7 @@ const morgan = require("morgan");
 const dotenv = require("dotenv");
 const path = require("path");
 const fs = require("fs");
+const cloudinary = require("cloudinary");
 
 // Load environment variables
 dotenv.config();
@@ -29,6 +30,7 @@ const notificationRoutes = require("./routes/notification.routes");
 const supportRoutes = require("./routes/support.routes");
 const roleRoutes = require("./routes/role.routes");
 const uploadRoutes = require("./routes/upload");
+const buyer_app_userRoutes = require("./routes/buyer_app_routes/buyer_app_user_routes");
 
 // Initialize Express app
 const app = express();
@@ -42,6 +44,7 @@ app.use(
 
       const allowedOrigins = [
         "http://localhost:3000",
+        "http://localhost:5000",
         "https://rental-prime-frontend.onrender.com",
         // Add your frontend deployment URLs here
         // Example: "https://your-frontend-domain.com",
@@ -115,7 +118,7 @@ app.use("/api/notifications", notificationRoutes);
 app.use("/api/support", supportRoutes);
 app.use("/api/roles", roleRoutes);
 app.use("/api/upload", uploadRoutes);
-
+app.use("/api/buyer_app_users", buyer_app_userRoutes);
 // Serve uploaded files
 app.use("/uploads", express.static(path.join(__dirname, "public", "uploads")));
 

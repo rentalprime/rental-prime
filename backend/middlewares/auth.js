@@ -1,107 +1,81 @@
 const db = require("../config/database");
-const jwt = require("jsonwebtoken");
 const config = require("../config/config");
-
+const jwt = require("jsonwebtoken");
 /**
  * Enhanced Authentication & Authorization Middleware
  * Standardized system for the entire application
  */
 
 // Protect routes - Authentication middleware
+
 exports.protect = async (req, res, next) => {
   let token;
-
+  // ✅ 1. Extract token from Authorization header or cookies
   if (
     req.headers.authorization &&
     req.headers.authorization.startsWith("Bearer")
   ) {
-    // Set token from Bearer token in header
     token = req.headers.authorization.split(" ")[1];
   } else if (req.cookies?.token) {
-    // Set token from cookie
     token = req.cookies.token;
   }
-
-  // Make sure token exists
   if (!token) {
     return res.status(401).json({
       success: false,
       message: "Access denied. No token provided.",
     });
   }
-
   try {
-    // Verify JWT token
-    const decoded = jwt.verify(token, config.jwtSecret);
+    // ✅ 2. Verify JWT
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    console.log("decoded", decoded);
     const userId = decoded.id;
 
-    // Try to get user data from admin_users table first (for admin users)
-    const adminUserQuery = await db.query(
-      `SELECT au.*, r.id as role_id, r.name as role_name, r.description as role_description, r.permissions as role_permissions
-       FROM admin_users au
-       LEFT JOIN roles r ON au.role_id = r.id
-       WHERE au.id = $1`,
+    // ✅ 3. Get user from users table
+    const userQuery = await db.query(
+      `SELECT user_id, firstName, lastName, email, mobile, role, bio, location, status, created_at
+       FROM users WHERE user_id = $1`,
       [userId]
     );
 
-    let userData = null;
-    let userTable = null;
-
-    if (adminUserQuery.rows.length > 0) {
-      userData = adminUserQuery.rows[0];
-      userTable = "admin_users";
-    } else {
-      // Try users table (for vendors and customers)
-      const userQuery = await db.query(
-        `SELECT u.*, r.id as role_id, r.name as role_name, r.description as role_description, r.permissions as role_permissions
-         FROM users u
-         LEFT JOIN roles r ON u.role_id = r.id
-         WHERE u.id = $1`,
-        [userId]
-      );
-
-      if (userQuery.rows.length > 0) {
-        userData = userQuery.rows[0];
-        userTable = "users";
-      }
-    }
-
-    if (!userData) {
+    if (userQuery.rows.length === 0) {
       return res.status(401).json({
         success: false,
         message: "User not found in system",
       });
     }
 
-    // Format user data with role information
-    const formattedUser = {
-      ...userData,
-      roles: userData.role_id
-        ? {
-            id: userData.role_id,
-            name: userData.role_name,
-            description: userData.role_description,
-            permissions: userData.role_permissions,
-          }
-        : null,
+    const user = userQuery.rows[0];
+
+    if (user.status !== "active") {
+      return res.status(403).json({
+        success: false,
+        message: "Account is inactive or suspended",
+      });
+    }
+
+    // ✅ 4. Attach user to request
+    req.user = {
+      id: user.user_id,
+      firstName: user.firstname || "",
+      lastName: user.lastname || "",
+      email: user.email || "",
+      mobile: user.mobile || "",
+      role: user.role || "",
+      bio: user.bio || "",
+      location: user.location || "",
+      joinDate: new Date(user.created_at).toLocaleDateString("en-IN", {
+        month: "long",
+        year: "numeric",
+      }),
     };
 
-    // Remove sensitive data
-    delete formattedUser.password;
-    delete formattedUser.role_id;
-    delete formattedUser.role_name;
-    delete formattedUser.role_description;
-    delete formattedUser.role_permissions;
-
-    req.user = formattedUser;
-    req.userTable = userTable;
     req.token = token;
-
     next();
   } catch (err) {
     return res.status(401).json({
       success: false,
-      message: "Not authorized to access this route",
+      message: "Invalid or expired token",
       error: err.message,
     });
   }
